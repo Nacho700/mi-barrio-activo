@@ -21,7 +21,7 @@ from src.data_helpers import (
     load_geojson_points,
     load_instalaciones_deportivas,
 )
-from src.interpolation import estimate_environmental_profile
+from src.interpolation import estimate_environmental_profile, get_nearest_station_info
 from src.accessibility import compute_accessibility_profile
 from src.index import compute_ibup, ibup_label, REFERENCE_RANGES
 
@@ -95,7 +95,10 @@ if ejecutar:
         stations_with_values = load_estaciones_contaminacion()
 
         carril_bici_points = load_geojson_points("carril_bici.geojson")
-        verde_points = load_geojson_points("zonas_verdes.geojson") + load_geojson_points("arbolado.geojson")
+        verde_points = load_geojson_points(
+            "zonas_verdes.geojson",
+            extra_props=["n_elementos_fitness", "sup_total", "tipologia"],
+        ) + load_geojson_points("arbolado.geojson")
         deporte_points = load_instalaciones_deportivas()
 
     if stations_with_values.empty:
@@ -116,6 +119,7 @@ if ejecutar:
         lat, lon = geo["lat"], geo["lon"]
 
         perfil_ambiental = estimate_environmental_profile(lat, lon, stations_with_values)
+        info_estacion = get_nearest_station_info(lat, lon, stations_with_values)
 
         try:
             perfil_acceso = compute_accessibility_profile(
@@ -146,6 +150,8 @@ if ejecutar:
                 "lon": lon,
                 "raw": raw_values,
                 "ibup": ibup_result,
+                "info_estacion": info_estacion,
+                "zona_verde_detalle": perfil_acceso["verde"],
             }
         )
 
@@ -189,6 +195,49 @@ if "comparador_resultados" in st.session_state:
                 value=f"{ibup_val}/100" if ibup_val is not None else "Sin datos",
                 help=ibup_label(ibup_val),
             )
+
+    # ------------------------------------------------------------------
+    # Contexto enriquecido: calidad del aire textual, tipo de zona/emisión
+    # y detalle de la zona verde más cercana (fitness, superficie)
+    # ------------------------------------------------------------------
+    st.markdown("##### 🔎 Contexto detallado por dirección")
+    for r in resultados:
+        with st.expander(f"📍 {r['direccion'][:60]}"):
+            info_est = r.get("info_estacion")
+            if info_est:
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.markdown(f"**Calidad del aire** (estación {info_est['nombre']}, a {info_est['distancia_m']:.0f} m)")
+                    st.markdown(f"🟢 {info_est['calidad_aire'] or 'Sin dato'}")
+                with col_b:
+                    st.markdown("**Tipo de emisión dominante**")
+                    st.markdown(f"🏭 {info_est['tipo_emision'] or 'Sin dato'}")
+                with col_c:
+                    st.markdown("**Tipo de zona**")
+                    st.markdown(f"🏙️ {info_est['tipo_zona'] or 'Sin dato'}")
+
+            zona_verde = r.get("zona_verde_detalle")
+            if zona_verde:
+                st.markdown("---")
+                st.markdown(f"**Zona verde más cercana**: {zona_verde['nombre']} ({zona_verde['minutos']} min a pie)")
+                extra = zona_verde.get("extra", {})
+                fitness = extra.get("n_elementos_fitness")
+                superficie = extra.get("sup_total")
+                tipologia = extra.get("tipologia")
+                detalles = []
+                if tipologia:
+                    detalles.append(f"Tipo: {tipologia}")
+                if fitness and str(fitness) not in ("0", "0.0", "None"):
+                    detalles.append(f"🏋️ {fitness} elementos de fitness al aire libre")
+                if superficie:
+                    try:
+                        detalles.append(f"📐 {float(superficie):,.0f} m² de superficie")
+                    except (ValueError, TypeError):
+                        pass
+                if detalles:
+                    st.markdown(" · ".join(detalles))
+                else:
+                    st.caption("Sin detalles adicionales disponibles para esta zona verde.")
 
     # Radar chart comparativo (sin ruido: no disponible con datos reales aún)
     categorias = ["no2", "pm10", "tiempo_deporte_min", "tiempo_bici_min", "tiempo_verde_min"]
