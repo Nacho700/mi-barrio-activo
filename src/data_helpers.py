@@ -49,10 +49,11 @@ def load_calidad_aire_historico():
 
 
 @st.cache_data
-def load_geojson_points(filename, nombre_col_candidates=("nombre", "denominacio", "nom"), max_points=5000):
+def load_geojson_points(filename, nombre_col_candidates=("nombre", "denominacio", "nom"), max_points=5000, extra_props=None):
     """
     Carga un GeoJSON de puntos/líneas/polígonos y lo convierte en lista de
-    dicts {"lat":, "lon":, "nombre":}. Útil para accessibility.py.
+    dicts {"lat":, "lon":, "nombre":, ...extra_props}. Útil para
+    accessibility.py.
 
     max_points : int
         Si el dataset tiene más puntos que este límite (p.ej. el arbolado
@@ -63,6 +64,10 @@ def load_geojson_points(filename, nombre_col_candidates=("nombre", "denominacio"
         sería lento en cada consulta. Un muestreo de ~5000 puntos sigue
         dando muy buena cobertura espacial para estimar "¿hay un árbol/zona
         verde cerca?" sin sacrificar rendimiento perceptible.
+    extra_props : list of str o None
+        Nombres de columnas adicionales a conservar de cada feature (p.ej.
+        ["n_elementos_fitness", "sup_total"] para zonas verdes). Si una
+        feature no tiene esa propiedad, se guarda como None.
     """
     path = RAW_DIR / filename
     if not path.exists():
@@ -89,20 +94,25 @@ def load_geojson_points(filename, nombre_col_candidates=("nombre", "denominacio"
                 nombre = props[c]
                 break
 
+        extra = {}
+        if extra_props:
+            for ep in extra_props:
+                extra[ep] = props.get(ep)
+
         if geom["type"] == "Point":
             lon, lat = geom["coordinates"][:2]
-            points.append({"lat": lat, "lon": lon, "nombre": nombre})
+            points.append({"lat": lat, "lon": lon, "nombre": nombre, **extra})
         elif geom["type"] in ("LineString",):
             # Para carril bici (líneas): usamos cada vértice como "punto accesible"
             for lon, lat in geom["coordinates"]:
-                points.append({"lat": lat, "lon": lon, "nombre": nombre})
+                points.append({"lat": lat, "lon": lon, "nombre": nombre, **extra})
         elif geom["type"] in ("MultiLineString", "Polygon", "MultiPolygon"):
             # Tomamos solo el primer anillo/línea como aproximación razonable
             coords = geom["coordinates"][0]
             if geom["type"] == "MultiPolygon":
                 coords = coords[0]
             for lon, lat in coords:
-                points.append({"lat": lat, "lon": lon, "nombre": nombre})
+                points.append({"lat": lat, "lon": lon, "nombre": nombre, **extra})
 
     return points
 
