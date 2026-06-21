@@ -85,6 +85,40 @@ def build_known_points(stations_df, value_column, lat_col="lat", lon_col="lon"):
     ]
 
 
+def get_nearest_station_info(lat, lon, stations_df):
+    """
+    Devuelve información textual/contextual de la estación de contaminación
+    más cercana al punto (lat, lon): calidad del aire interpretada,
+    tipo de emisión dominante, tipo de zona y distancia.
+
+    A diferencia de idw_interpolate() (que da un número estimado mezclando
+    varias estaciones), esto da el CONTEXTO real de la estación más próxima
+    — útil para mostrar al usuario algo legible como "Razonablemente Buena"
+    en vez de solo un número de NO2.
+
+    Returns
+    -------
+    dict con: nombre, distancia_m, calidad_aire, tipo_emision, tipo_zona
+    o None si no hay estaciones.
+    """
+    if stations_df.empty:
+        return None
+
+    distancias = stations_df.apply(
+        lambda row: geodesic((lat, lon), (row["lat"], row["lon"])).meters, axis=1
+    )
+    idx_mas_cercana = distancias.idxmin()
+    estacion = stations_df.loc[idx_mas_cercana]
+
+    return {
+        "nombre": estacion.get("nombre", "Estación"),
+        "distancia_m": round(distancias[idx_mas_cercana], 0),
+        "calidad_aire": estacion.get("calidad_am"),
+        "tipo_emision": estacion.get("tipoemisio"),
+        "tipo_zona": estacion.get("tipozona"),
+    }
+
+
 def estimate_environmental_profile(lat, lon, stations_df, pollutant_cols=None):
     """
     Devuelve un diccionario con la estimación interpolada de cada
