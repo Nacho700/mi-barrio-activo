@@ -9,6 +9,13 @@ NOTA sobre ruido: el dataset de ruido de Valencia (4 estaciones) solo da
 ubicación, sin valores en dB descargables de forma simple por esta vía.
 Esta página usa NO2, PM10 y PM2.5 (con datos reales e interpolados), que sí
 están disponibles.
+
+NOTA TÉCNICA sobre session_state: st_folium (el mapa interactivo) dispara
+un re-run completo del script en cuanto se renderiza. Si los resultados
+solo existieran dentro del bloque "if st.button(...):", ese re-run los
+borraría de inmediato (síntoma: "los resultados aparecen 1 segundo y
+desaparecen"). Por eso aquí los resultados se guardan en
+st.session_state y el bloque que los muestra es independiente del botón.
 """
 
 import sys
@@ -55,6 +62,40 @@ def evaluar_puntos(puntos):
     return pd.DataFrame(filas)
 
 
+def mostrar_resultados_rutina(df, titulo):
+    st.divider()
+    st.subheader(titulo)
+    st.dataframe(df[["etiqueta", "no2", "pm10", "pm25"]])
+
+    st.markdown("##### Exposición acumulada (media)")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("NO2 medio (µg/m³)", f"{df['no2'].mean():.1f}")
+    with col2:
+        st.metric("PM10 medio (µg/m³)", f"{df['pm10'].mean():.1f}")
+    with col3:
+        st.metric("PM2.5 medio (µg/m³)", f"{df['pm25'].mean():.1f}")
+
+    fig = px.line(df, x="etiqueta" if "etiqueta" in df.columns else None,
+                   y=["no2", "pm10", "pm25"], markers=True,
+                   title="Evolución de exposición a lo largo de tu recorrido")
+    st.plotly_chart(fig, width="stretch")
+
+    mapa = folium.Map(location=[df["lat"].mean(), df["lon"].mean()], zoom_start=13)
+    coords = df[["lat", "lon"]].values.tolist()
+    folium.PolyLine(coords, color="blue", weight=3, opacity=0.6).add_to(mapa)
+    max_no2 = df["no2"].max() or 1
+    for _, row in df.iterrows():
+        color = "red" if row["no2"] and row["no2"] / max_no2 > 0.66 else (
+            "orange" if row["no2"] and row["no2"] / max_no2 > 0.33 else "green"
+        )
+        folium.CircleMarker(
+            [row["lat"], row["lon"]], radius=5, color=color, fill=True, fill_opacity=0.8,
+            tooltip=f"{row.get('etiqueta', '')} — NO2: {row['no2']}, PM2.5: {row['pm25']}",
+        ).add_to(mapa)
+    st_folium(mapa, width=900, height=450, key="mapa_rutina")
+
+
 if modo == "Rutina diaria (direcciones)":
     st.markdown("##### Introduce tu rutina en orden")
     n_paradas = st.slider("Número de paradas", 2, 6, 3)
@@ -84,34 +125,15 @@ if modo == "Rutina diaria (direcciones)":
                 puntos.append({"lat": geo["lat"], "lon": geo["lon"], "etiqueta": d})
 
         if len(puntos) < 2:
+            st.session_state.pop("rutina_df", None)
             st.stop()
 
         df = evaluar_puntos(puntos)
+        st.session_state["rutina_df"] = df
+        st.session_state["rutina_titulo"] = "Resultado por parada"
 
-        st.divider()
-        st.subheader("Resultado por parada")
-        st.dataframe(df[["etiqueta", "no2", "pm10", "pm25"]])
-
-        st.markdown("##### Exposición acumulada del día (media simple por parada)")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("NO2 medio (µg/m³)", f"{df['no2'].mean():.1f}")
-        with col2:
-            st.metric("PM10 medio (µg/m³)", f"{df['pm10'].mean():.1f}")
-        with col3:
-            st.metric("PM2.5 medio (µg/m³)", f"{df['pm25'].mean():.1f}")
-
-        fig = px.line(df, x="etiqueta", y=["no2", "pm10", "pm25"], markers=True,
-                       title="Evolución de exposición a lo largo de tu rutina")
-        st.plotly_chart(fig, use_container_width=True)
-
-        mapa = folium.Map(location=[df["lat"].mean(), df["lon"].mean()], zoom_start=13)
-        coords = []
-        for _, row in df.iterrows():
-            folium.Marker([row["lat"], row["lon"]], tooltip=row["etiqueta"]).add_to(mapa)
-            coords.append([row["lat"], row["lon"]])
-        folium.PolyLine(coords, color="blue", weight=3, opacity=0.6).add_to(mapa)
-        st_folium(mapa, width=900, height=450)
+    if "rutina_df" in st.session_state:
+        mostrar_resultados_rutina(st.session_state["rutina_df"], st.session_state["rutina_titulo"])
 
 else:
     st.markdown("##### Sube tu archivo GPX")
@@ -145,41 +167,17 @@ else:
 
         if not puntos_gpx:
             st.warning("No se encontraron puntos de track en el GPX. ¿El archivo tiene una traza válida?")
+            st.session_state.pop("rutina_df", None)
             st.stop()
 
         with st.spinner(f"Evaluando {len(puntos_gpx)} puntos de tu ruta..."):
             df = evaluar_puntos(puntos_gpx)
 
-        st.divider()
-        st.subheader(f"Resultado de tu ruta ({len(df)} puntos evaluados)")
+        st.session_state["rutina_df"] = df
+        st.session_state["rutina_titulo"] = f"Resultado de tu ruta ({len(df)} puntos evaluados)"
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("NO2 medio (µg/m³)", f"{df['no2'].mean():.1f}")
-        with col2:
-            st.metric("PM10 medio (µg/m³)", f"{df['pm10'].mean():.1f}")
-        with col3:
-            st.metric("PM2.5 medio (µg/m³)", f"{df['pm25'].mean():.1f}")
-
-        fig = px.line(df, y=["no2", "pm10", "pm25"], markers=True,
-                       title="Exposición a lo largo de la ruta (en orden de recorrido)")
-        st.plotly_chart(fig, use_container_width=True)
-
-        mapa = folium.Map(location=[df["lat"].mean(), df["lon"].mean()], zoom_start=13)
-        coords = df[["lat", "lon"]].values.tolist()
-        folium.PolyLine(coords, color="red", weight=3, opacity=0.7).add_to(mapa)
-        # Colorear puntos por nivel de NO2 (rojo = peor)
-        max_no2 = df["no2"].max() or 1
-        for _, row in df.iterrows():
-            color = "red" if row["no2"] and row["no2"] / max_no2 > 0.66 else (
-                "orange" if row["no2"] and row["no2"] / max_no2 > 0.33 else "green"
-            )
-            folium.CircleMarker(
-                [row["lat"], row["lon"]], radius=4, color=color, fill=True, fill_opacity=0.8,
-                tooltip=f"NO2: {row['no2']}, PM2.5: {row['pm25']}",
-            ).add_to(mapa)
-        st_folium(mapa, width=900, height=450)
-
+    if "rutina_df" in st.session_state:
+        mostrar_resultados_rutina(st.session_state["rutina_df"], st.session_state["rutina_titulo"])
         st.info(
             "💡 Compara esta ruta con una alternativa (p.ej. por el cauce del "
             "Turia en vez de por una avenida con tráfico) subiendo otro GPX y "
