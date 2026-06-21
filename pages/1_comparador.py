@@ -22,7 +22,7 @@ from src.data_helpers import (
     load_instalaciones_deportivas,
 )
 from src.interpolation import estimate_environmental_profile, get_nearest_station_info
-from src.accessibility import compute_accessibility_profile
+from src.accessibility import compute_accessibility_profile, top_n_nearest
 from src.index import compute_ibup, ibup_label, REFERENCE_RANGES
 
 st.set_page_config(page_title="Comparador | Mi Barrio Activo", page_icon="📊", layout="wide")
@@ -202,7 +202,7 @@ if "comparador_resultados" in st.session_state:
     # ------------------------------------------------------------------
     st.markdown("##### 🔎 Contexto detallado por dirección")
     for r in resultados:
-        with st.expander(f"📍 {r['direccion'][:60]}"):
+        with st.expander(f"📍 {r['direccion'][:60]}", expanded=True):
             info_est = r.get("info_estacion")
             if info_est:
                 col_a, col_b, col_c = st.columns(3)
@@ -219,25 +219,86 @@ if "comparador_resultados" in st.session_state:
             zona_verde = r.get("zona_verde_detalle")
             if zona_verde:
                 st.markdown("---")
-                st.markdown(f"**Zona verde más cercana**: {zona_verde['nombre']} ({zona_verde['minutos']} min a pie)")
+                nombre_zona = zona_verde["nombre"]
+                if not nombre_zona or str(nombre_zona).lower() in ("sin nombre", "nan"):
+                    nombre_zona = "Árbol o zona verde sin nombre registrado"
+                st.markdown(f"**Zona verde más cercana**: {nombre_zona} ({zona_verde['minutos']} min a pie)")
+
                 extra = zona_verde.get("extra", {})
+
+                def _es_valido(valor):
+                    """True si el valor es un dato real, no None/NaN/vacío."""
+                    if valor is None:
+                        return False
+                    try:
+                        import math
+                        if isinstance(valor, float) and math.isnan(valor):
+                            return False
+                    except TypeError:
+                        pass
+                    if isinstance(valor, str) and valor.strip().lower() in ("", "nan", "none"):
+                        return False
+                    return True
+
+                tipologia = extra.get("tipologia")
                 fitness = extra.get("n_elementos_fitness")
                 superficie = extra.get("sup_total")
-                tipologia = extra.get("tipologia")
+
                 detalles = []
-                if tipologia:
+                if _es_valido(tipologia):
                     detalles.append(f"Tipo: {tipologia}")
-                if fitness and str(fitness) not in ("0", "0.0", "None"):
-                    detalles.append(f"🏋️ {fitness} elementos de fitness al aire libre")
-                if superficie:
+                if _es_valido(fitness) and float(fitness) > 0:
+                    detalles.append(f"🏋️ {int(float(fitness))} elementos de fitness al aire libre")
+                if _es_valido(superficie):
                     try:
                         detalles.append(f"📐 {float(superficie):,.0f} m² de superficie")
                     except (ValueError, TypeError):
                         pass
+
                 if detalles:
                     st.markdown(" · ".join(detalles))
                 else:
-                    st.caption("Sin detalles adicionales disponibles para esta zona verde.")
+                    st.caption(
+                        "Este punto verde más cercano es un árbol individual del "
+                        "inventario de arbolado, sin ficha de zona verde asociada "
+                        "(sin datos de superficie o equipamiento)."
+                    )
+
+            # --------------------------------------------------------------
+            # Top 5 zonas verdes / instalaciones deportivas cercanas
+            # --------------------------------------------------------------
+            st.markdown("---")
+            key_top5 = f"top5_{r['direccion'][:20]}_{r['lat']}_{r['lon']}"
+            if st.button("🏆 Ver Top 5 zonas verdes e instalaciones deportivas cercanas", key=f"btn_{key_top5}"):
+                with st.spinner("Calculando rankings..."):
+                    verde_points_top5 = load_geojson_points(
+                        "zonas_verdes.geojson",
+                        extra_props=["n_elementos_fitness", "sup_total", "tipologia"],
+                    ) + load_geojson_points("arbolado.geojson")
+                    deporte_points_top5 = load_instalaciones_deportivas()
+
+                    top5_verde = top_n_nearest(r["lat"], r["lon"], verde_points_top5, n=5)
+                    top5_deporte = top_n_nearest(r["lat"], r["lon"], deporte_points_top5, n=5)
+                    st.session_state[key_top5] = {"verde": top5_verde, "deporte": top5_deporte}
+
+            if key_top5 in st.session_state:
+                top5_data = st.session_state[key_top5]
+                col_top_verde, col_top_deporte = st.columns(2)
+                with col_top_verde:
+                    st.markdown("**🌳 Top 5 zonas verdes**")
+                    if top5_data["verde"]:
+                        for i, z in enumerate(top5_data["verde"], 1):
+                            nombre_z = z["nombre"] if z["nombre"] and str(z["nombre"]).lower() != "sin nombre" else "Árbol/zona sin nombre"
+                            st.markdown(f"{i}. {nombre_z} — {z['minutos']} min a pie")
+                    else:
+                        st.caption("Sin datos disponibles.")
+                with col_top_deporte:
+                    st.markdown("**🏋️ Top 5 instalaciones deportivas**")
+                    if top5_data["deporte"]:
+                        for i, d in enumerate(top5_data["deporte"], 1):
+                            st.markdown(f"{i}. {d['nombre']} — {d['minutos']} min a pie")
+                    else:
+                        st.caption("Sin datos disponibles.")
 
     # Radar chart comparativo (sin ruido: no disponible con datos reales aún)
     categorias = ["no2", "pm10", "tiempo_deporte_min", "tiempo_bici_min", "tiempo_verde_min"]
