@@ -200,6 +200,59 @@ def load_instalaciones_deportivas():
 
 
 @st.cache_data
+def load_intensidad_trafico():
+    """
+    Carga la capa de intensidad de tráfico por tramo (LineString) y
+    devuelve un punto representativo por tramo (el punto medio de la
+    línea) junto con su IMV (Intensidad Media de Vehículos) y nombre de
+    calle. Usado por src/noise_inference.py para estimar ruido.
+    """
+    path = RAW_DIR / "intensidad_trafico.geojson"
+    if not path.exists():
+        return []
+
+    with open(path, "r", encoding="utf-8") as f:
+        geo = json.load(f)
+
+    puntos = []
+    for feature in geo.get("features", []):
+        geom = feature.get("geometry")
+        props = feature.get("properties", {})
+        if not geom:
+            continue
+
+        # Tomamos el punto medio de la línea como representante del tramo
+        coords = None
+        if geom["type"] == "LineString":
+            coords = geom["coordinates"]
+        elif geom["type"] == "MultiLineString":
+            coords = geom["coordinates"][0]
+        if not coords:
+            continue
+
+        punto_medio = coords[len(coords) // 2]
+        lon, lat = punto_medio[:2]
+
+        imv = props.get("imv")
+        try:
+            imv = float(imv) if imv is not None else None
+        except (ValueError, TypeError):
+            imv = None
+
+        puntos.append(
+            {
+                "lat": lat,
+                "lon": lon,
+                "imv": imv,
+                "nombre": props.get("des_tramo") or "Tramo sin nombre",
+                "estado": props.get("estado"),
+            }
+        )
+
+    return puntos
+
+
+@st.cache_data
 def load_estaciones_ruido():
     """Carga ubicación de estaciones de ruido desde su GeoJSON propio."""
     path = RAW_DIR / "estaciones_ruido.geojson"
