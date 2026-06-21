@@ -6,6 +6,9 @@ la instalación deportiva, carril bici o zona verde más cercana, usando el
 grafo de calles de Valencia descargado con OSMnx.
 """
 
+import gzip
+import shutil
+import tempfile
 from pathlib import Path
 from functools import lru_cache
 
@@ -15,20 +18,34 @@ import pandas as pd
 
 PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
 GRAPH_PATH = PROCESSED_DIR / "grafo_valencia.graphml"
+GRAPH_PATH_GZ = PROCESSED_DIR / "grafo_valencia.graphml.gz"
 
 WALKING_SPEED_M_PER_MIN = 80  # ~4.8 km/h, ritmo de paseo urbano
 
 
 @lru_cache(maxsize=1)
 def load_graph():
-    """Carga el grafo de calles cacheado. Lanza error claro si no existe."""
-    if not GRAPH_PATH.exists():
-        raise FileNotFoundError(
-            f"No se encontró el grafo en {GRAPH_PATH}.\n"
-            "Ejecuta primero: python src/data_loader.py --download-all"
-        )
-    G = ox.load_graphml(GRAPH_PATH)
-    return G
+    """
+    Carga el grafo de calles cacheado. Soporta tanto el .graphml normal
+    como una versión comprimida .graphml.gz (necesaria porque el grafo sin
+    comprimir de Valencia supera el límite de 25MB de subida vía la
+    interfaz web de GitHub; comprimido baja a ~5MB).
+    """
+    if GRAPH_PATH.exists():
+        return ox.load_graphml(GRAPH_PATH)
+
+    if GRAPH_PATH_GZ.exists():
+        # Descomprimir a un archivo temporal y cargarlo desde ahí
+        with tempfile.NamedTemporaryFile(suffix=".graphml", delete=False) as tmp:
+            with gzip.open(GRAPH_PATH_GZ, "rb") as f_in:
+                shutil.copyfileobj(f_in, tmp)
+            tmp_path = tmp.name
+        return ox.load_graphml(tmp_path)
+
+    raise FileNotFoundError(
+        f"No se encontró el grafo en {GRAPH_PATH} ni en {GRAPH_PATH_GZ}.\n"
+        "Ejecuta primero: python src/data_loader.py --download-all"
+    )
 
 
 def nearest_node(G, lat, lon):
