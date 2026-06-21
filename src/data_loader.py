@@ -74,6 +74,12 @@ ARCGIS_LAYERS = {
     ),  # Capa "Equipamients municipals / Equipamientos municipales", verificada listando
     # las capas del MapServer SociedadBienestar (GetCapabilities devolvía solo GML/WFS,
     # pero la capa también se sirve vía REST MapServer estándar, igual que las demás).
+    "intensidad_trafico": (
+        "https://geoportal.valencia.es/server/rest/services/OPENDATA/"
+        "Trafico/MapServer/188/query"
+    ),  # Capa "Intensitat transit trams" — intensidad media de vehículos (IMV)
+    # por tramo de calle. Se usa para inferir ruido (ver src/noise_inference.py),
+    # ya que el dataset de ruido de Valencia (4 estaciones) no da valores en dB.
 }
 
 # CSV directos de contaminación por estación (un archivo por estación,
@@ -275,6 +281,11 @@ def download_all():
         RAW_DIR / "equipamientos_municipales.geojson",
     )
 
+    download_arcgis_layer_as_geojson(
+        ARCGIS_LAYERS["intensidad_trafico"],
+        RAW_DIR / "intensidad_trafico.geojson",
+    )
+
     download_street_graph()
 
     print("=" * 70)
@@ -297,6 +308,18 @@ def download_street_graph(place="Valencia, Spain"):
         G = ox.graph_from_place(place, network_type="walk", simplify=True)
         ox.save_graphml(G, out_path)
         print(f"     Grafo guardado en {out_path} ({len(G.nodes)} nodos)")
+
+        # Generar también una versión comprimida .gz: el .graphml de
+        # Valencia sin comprimir supera el límite de 25MB que GitHub
+        # permite subir vía su interfaz web; comprimido baja a ~5MB.
+        # src/accessibility.py sabe cargar cualquiera de las dos versiones.
+        import gzip
+        import shutil
+
+        gz_path = out_path.with_suffix(out_path.suffix + ".gz")
+        with open(out_path, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        print(f"     Versión comprimida guardada en {gz_path} (para subir a GitHub si pesa más de 25MB)")
     except ImportError:
         print("     [ERROR] osmnx no está instalado. Ejecuta: pip install osmnx")
     except Exception as e:
