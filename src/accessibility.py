@@ -52,14 +52,58 @@ def nearest_node(G, lat, lon):
     return ox.distance.nearest_nodes(G, X=lon, Y=lat)
 
 
+def _ranked_walking_times(lat, lon, target_points, max_candidates=8):
+    """
+    Función interna: calcula el tiempo a pie real hasta cada uno de los
+    `max_candidates` puntos más cercanos (por distancia euclídea) de
+    target_points, y devuelve la lista completa ordenada de más cercano a
+    más lejano (en tiempo real por calle, no en línea recta).
+
+    Esto evita duplicar la lógica de pre-filtro + cálculo de ruta entre
+    walking_time_to_nearest() (que solo necesita el mejor) y
+    top_n_nearest() (que necesita varios).
+    """
+    if not target_points:
+        return []
+
+    G = load_graph()
+    origin_node = nearest_node(G, lat, lon)
+
+    # Pre-filtro rápido por distancia euclídea para no calcular rutas de más
+    df = pd.DataFrame(target_points)
+    df["dist_aprox"] = ((df["lat"] - lat) ** 2 + (df["lon"] - lon) ** 2) ** 0.5
+    df = df.sort_values("dist_aprox").head(max_candidates)
+
+    columnas_base = {"lat", "lon", "nombre", "dist_aprox"}
+    columnas_extra = [c for c in df.columns if c not in columnas_base]
+
+    resultados = []
+    for _, row in df.iterrows():
+        try:
+            dest_node = nearest_node(G, row["lat"], row["lon"])
+            length_m = nx.shortest_path_length(G, origin_node, dest_node, weight="length")
+            minutos = length_m / WALKING_SPEED_M_PER_MIN
+            resultados.append(
+                {
+                    "minutos": round(minutos, 1),
+                    "metros": round(length_m, 0),
+                    "nombre": row.get("nombre", "Sin nombre"),
+                    "lat": row["lat"],
+                    "lon": row["lon"],
+                    "extra": {c: row.get(c) for c in columnas_extra},
+                }
+            )
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            continue
+
+    resultados.sort(key=lambda r: r["minutos"])
+    return resultados
+
+
 def walking_time_to_nearest(lat, lon, target_points, max_candidates=8):
     """
     Calcula el tiempo a pie (en minutos) desde (lat, lon) hasta el punto más
     cercano de target_points, usando distancias reales por la red de calles.
-
-    Para no calcular contra TODOS los puntos (que puede ser lento si hay
-    miles, p.ej. árboles), primero se filtra a los `max_candidates` más
-    cercanos en línea recta, y solo sobre esos se calcula la ruta real.
 
     Parameters
     ----------
@@ -74,37 +118,28 @@ def walking_time_to_nearest(lat, lon, target_points, max_candidates=8):
     dict con {"minutos": float, "metros": float, "nombre": str, "extra": dict}
     del punto más cercano, o None si target_points está vacío.
     """
-    if not target_points:
-        return None
+    ranked = _ranked_walking_times(lat, lon, target_points, max_candidates=max_candidates)
+    return ranked[0] if ranked else None
 
-    G = load_graph()
-    origin_node = nearest_node(G, lat, lon)
 
-    # Pre-filtro rápido por distancia euclídea para no calcular rutas de más
-    df = pd.DataFrame(target_points)
-    df["dist_aprox"] = ((df["lat"] - lat) ** 2 + (df["lon"] - lon) ** 2) ** 0.5
-    df = df.sort_values("dist_aprox").head(max_candidates)
+def top_n_nearest(lat, lon, target_points, n=5, max_candidates=15):
+    """
+    Devuelve los N puntos más cercanos (por tiempo real a pie), en vez de
+    solo el mejor. Útil para mostrar un ranking tipo "Top 5 zonas verdes
+    cerca de ti" o "Top 5 instalaciones deportivas cerca de ti".
 
-    columnas_base = {"lat", "lon", "nombre", "dist_aprox"}
-    columnas_extra = [c for c in df.columns if c not in columnas_base]
+    max_candidates se sube respecto a walking_time_to_nearest (8 -> 15)
+    porque para un ranking de 5 conviene tener más candidatos de partida
+    por si alguno no tiene ruta válida en el grafo.
 
-    best = None
-    for _, row in df.iterrows():
-        try:
-            dest_node = nearest_node(G, row["lat"], row["lon"])
-            length_m = nx.shortest_path_length(G, origin_node, dest_node, weight="length")
-            minutos = length_m / WALKING_SPEED_M_PER_MIN
-            if best is None or minutos < best["minutos"]:
-                best = {
-                    "minutos": round(minutos, 1),
-                    "metros": round(length_m, 0),
-                    "nombre": row.get("nombre", "Sin nombre"),
-                    "extra": {c: row.get(c) for c in columnas_extra},
-                }
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
-            continue
-
-    return best
+    Returns
+    -------
+    list of dict (puede tener menos de n elementos si no hay suficientes
+    target_points o candidatos con ruta válida), ordenados de más cercano
+    a más lejano.
+    """
+    ranked = _ranked_walking_times(lat, lon, target_points, max_candidates=max_candidates)
+    return ranked[:n]
 
 
 def compute_accessibility_profile(lat, lon, carril_bici_points, deporte_points, verde_points):
