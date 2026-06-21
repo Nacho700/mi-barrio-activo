@@ -64,12 +64,15 @@ def walking_time_to_nearest(lat, lon, target_points, max_candidates=8):
     Parameters
     ----------
     target_points : list of dict
-        [{"lat": .., "lon": .., "nombre": ..}, ...]
+        [{"lat": .., "lon": .., "nombre": .., ...propiedades_extra}, ...]
+        Cualquier propiedad adicional presente en el dict (p.ej.
+        'n_elementos_fitness', 'sup_total' para zonas verdes) se conserva
+        y se devuelve en el resultado bajo la clave 'extra'.
 
     Returns
     -------
-    dict con {"minutos": float, "metros": float, "nombre": str} del punto
-    más cercano, o None si target_points está vacío.
+    dict con {"minutos": float, "metros": float, "nombre": str, "extra": dict}
+    del punto más cercano, o None si target_points está vacío.
     """
     if not target_points:
         return None
@@ -82,6 +85,9 @@ def walking_time_to_nearest(lat, lon, target_points, max_candidates=8):
     df["dist_aprox"] = ((df["lat"] - lat) ** 2 + (df["lon"] - lon) ** 2) ** 0.5
     df = df.sort_values("dist_aprox").head(max_candidates)
 
+    columnas_base = {"lat", "lon", "nombre", "dist_aprox"}
+    columnas_extra = [c for c in df.columns if c not in columnas_base]
+
     best = None
     for _, row in df.iterrows():
         try:
@@ -93,6 +99,7 @@ def walking_time_to_nearest(lat, lon, target_points, max_candidates=8):
                     "minutos": round(minutos, 1),
                     "metros": round(length_m, 0),
                     "nombre": row.get("nombre", "Sin nombre"),
+                    "extra": {c: row.get(c) for c in columnas_extra},
                 }
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             continue
