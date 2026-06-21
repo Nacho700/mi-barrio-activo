@@ -1,85 +1,190 @@
 """
-app.py
-=======
-Página principal de "Mi Barrio Activo y Sano".
-Ejecutar con: streamlit run app.py
+src/interpolation.py
+=====================
+Interpolación espacial (Inverse Distance Weighting, IDW) para estimar
+contaminación (NO2, PM10, PM2.5) y ruido (SPL en dB) en cualquier punto de
+Valencia a partir de los valores conocidos en las estaciones fijas.
+
+¿Por qué IDW y no Kriging?
+IDW es más simple, no requiere ajustar un variograma, y con ~10 estaciones
+(pocos puntos) el beneficio de Kriging es marginal frente a su complejidad.
+Si en el futuro quieres mejorar el proyecto, sustituir esta función por
+pykrige.OrdinaryKriging es el upgrade natural y se puede justificar muy bien
+en la memoria como "trabajo futuro".
 """
 
-import streamlit as st
+import numpy as np
+import pandas as pd
+from geopy.distance import geodesic
 
-st.set_page_config(
-    page_title="Mi Barrio Activo y Sano",
-    page_icon="🏃",
-    layout="wide",
-)
 
-st.title("🏃 Mi Barrio Activo y Sano")
-st.subheader("Decide dónde vivir en Valencia con datos, no solo con intuición")
-
-st.markdown(
+def idw_interpolate(target_lat, target_lon, known_points, power=2, n_neighbors=None):
     """
-Cuando buscas piso, miras precio y metros cuadrados — pero casi nunca puedes
-saber objetivamente **cuánto ruido tendrás a las 8 de la mañana**, **cuánta
-contaminación vas a respirar cada día**, o **a cuántos minutos a pie está el
-parque o el polideportivo más cercano**.
+    Interpola un valor en (target_lat, target_lon) usando IDW.
 
-Esta aplicación combina datos abiertos del Ayuntamiento de València
-(contaminación, ruido, arbolado, carril bici, instalaciones deportivas) en
-un **Índice de Bienestar Urbano Personal (IBUP)** para que puedas:
-"""
-)
+    Parameters
+    ----------
+    target_lat, target_lon : float
+        Coordenadas del punto donde queremos estimar el valor.
+    known_points : list of dict
+        Cada dict debe tener: {"lat": float, "lon": float, "value": float}
+        (p.ej. una estación con su valor medido de NO2).
+    power : float
+        Exponente de la ponderación por distancia (2 es el valor estándar).
+    n_neighbors : int or None
+        Si se especifica, solo se usan los N puntos más cercanos.
 
-col1, col2, col3 = st.columns(3)
+    Returns
+    -------
+    float
+        Valor interpolado. Si target coincide exactamente con un punto
+        conocido (distancia ~0), devuelve el valor de ese punto.
+    """
+    if not known_points:
+        raise ValueError("known_points está vacío: no hay estaciones con datos para interpolar.")
 
-with col1:
-    st.markdown("### 📊 Comparar")
-    st.markdown(
-        "Compara hasta 3 direcciones candidatas (pisos que estás valorando) "
-        "lado a lado en un radar de bienestar urbano."
+    distances = []
+    for p in known_points:
+        d = geodesic((target_lat, target_lon), (p["lat"], p["lon"])).meters
+        distances.append(d)
+
+    distances = np.array(distances)
+    values = np.array([p["value"] for p in known_points], dtype=float)
+
+    # Si el punto coincide casi exactamente con una estación, devolvemos su valor
+    if distances.min() < 1.0:
+        return float(values[distances.argmin()])
+
+    if n_neighbors is not None and n_neighbors < len(distances):
+        idx = np.argsort(distances)[:n_neighbors]
+        distances = distances[idx]
+        values = values[idx]
+
+    weights = 1.0 / (distances ** power)
+    weights /= weights.sum()
+
+    return float(np.sum(weights * values))
+
+
+def build_known_points(stations_df, value_column, lat_col="lat", lon_col="lon"):
+    """
+    Convierte un DataFrame de estaciones en la lista de dicts que espera
+    idw_interpolate(). Filtra filas con NaN en el valor.
+
+    Parameters
+    ----------
+    stations_df : pd.DataFrame
+        Debe contener columnas lat, lon y value_column.
+    value_column : str
+        Nombre de la columna con el valor a interpolar (p.ej. "no2", "ruido_db").
+    """
+    df = stations_df.dropna(subset=[lat_col, lon_col, value_column])
+    return [
+        {"lat": row[lat_col], "lon": row[lon_col], "value": row[value_column]}
+        for _, row in df.iterrows()
+    ]
+
+
+def get_nearest_station_info(lat, lon, stations_df):
+    """
+    Devuelve información textual/contextual de la estación de contaminación
+    más cercana al punto (lat, lon): calidad del aire interpretada,
+    tipo de emisión dominante, tipo de zona y distancia.
+
+    A diferencia de idw_interpolate() (que da un número estimado mezclando
+    varias estaciones), esto da el CONTEXTO real de la estación más próxima
+    — útil para mostrar al usuario algo legible como "Razonablemente Buena"
+    en vez de solo un número de NO2.
+
+    Returns
+    -------
+    dict con: nombre, distancia_m, calidad_aire, tipo_emision, tipo_zona
+    o None si no hay estaciones.
+    """
+    if stations_df.empty:
+        return None
+
+    distancias = stations_df.apply(
+        lambda row: geodesic((lat, lon), (row["lat"], row["lon"])).meters, axis=1
     )
+    idx_mas_cercana = distancias.idxmin()
+    estacion = stations_df.loc[idx_mas_cercana]
 
-with col2:
-    st.markdown("### 🗺️ Tu rutina real")
-    st.markdown(
-        "Introduce tu rutina diaria o sube un GPX de tus entrenos y calcula "
-        "tu exposición acumulada, no solo la de un punto fijo."
-    )
+    return {
+        "nombre": estacion.get("nombre", "Estación"),
+        "distancia_m": round(distancias[idx_mas_cercana], 0),
+        "calidad_aire": estacion.get("calidad_am"),
+        "tipo_emision": estacion.get("tipoemisio"),
+        "tipo_zona": estacion.get("tipozona"),
+    }
 
-with col3:
-    st.markdown("### 📄 Incidencia ciudadana")
-    st.markdown(
-        "Simula una mejora (carril bici, árbol, pista deportiva) cerca de "
-        "ti y genera un informe con evidencia cuantificada para defenderla."
-    )
 
-st.divider()
+def estimate_environmental_profile(lat, lon, stations_df, pollutant_cols=None):
+    """
+    Devuelve un diccionario con la estimación interpolada de cada
+    contaminante en el punto (lat, lon), a partir de las estaciones reales
+    de contaminación atmosférica de Valencia.
 
-st.info(
-    "👈 Usa el menú de la izquierda para navegar entre **Comparador**, "
-    "**Mi rutina** y **Simulador de incidencia**.",
-    icon="ℹ️",
-)
+    pollutant_cols : dict
+        Mapeo {"clave_salida": "nombre_columna_en_df"}. Por defecto:
+        {"no2": "no2", "pm10": "pm10", "pm25": "pm25"}
+        Estos son los nombres de columna reales tras normalizarlos en
+        src/data_loader.py (_normalize_column_name).
 
-with st.expander("ℹ️ Metodología y fuentes de datos"):
-    st.markdown(
-        """
-**Fuentes de datos** (Open Data València, Ajuntament de València):
-- Estaciones de contaminación atmosférica y ruido (Red de Vigilancia)
-- Inventario de arbolado y zonas verdes
-- Itinerarios ciclistas (carril bici)
-- Instalaciones deportivas municipales
-- Red de calles peatonal: OpenStreetMap (vía OSMnx)
+    NOTA: el ruido NO se interpola aquí. El dataset de ruido de Valencia
+    da pocas estaciones (4) sin valores numéricos descargables de forma
+    simple, así que se trata por separado — ver
+    src/data_helpers.get_estaciones_ruido_con_valor() y la nota de
+    honestidad metodológica en pages/.
+    """
+    if pollutant_cols is None:
+        pollutant_cols = {"no2": "no2", "pm10": "pm10", "pm25": "pm25"}
 
-**Métodos de Data Science aplicados:**
-1. **Interpolación espacial (IDW)** para estimar contaminación/ruido en
-   cualquier punto a partir de las estaciones fijas.
-2. **Grafo de calles real** (NetworkX/OSMnx) para calcular tiempos a pie
-   reales, no distancias en línea recta.
-3. **Índice compuesto ponderable** por el propio usuario según lo que más
-   le importe.
-4. **Simulación antes/después** para cuantificar el impacto estimado de una
-   mejora de infraestructura concreta.
+    profile = {}
+    for out_key, col in pollutant_cols.items():
+        if col not in stations_df.columns:
+            profile[out_key] = None
+            continue
+        known_points = build_known_points(stations_df, col)
+        if not known_points:
+            profile[out_key] = None
+            continue
+        profile[out_key] = round(idw_interpolate(lat, lon, known_points), 2)
 
-Proyecto académico — UPV, Grado en Ciencia de Datos.
-        """
-    )
+    return profile
+
+
+def build_interpolation_grid(stations_df, value_column, bounds, resolution=50):
+    """
+    Genera una rejilla (grid) de valores interpolados sobre toda la ciudad,
+    útil para pintar un mapa de calor (heatmap) en vez de calcular punto a
+    punto cada vez que el usuario mueve el mapa.
+
+    Parameters
+    ----------
+    bounds : tuple
+        (lat_min, lat_max, lon_min, lon_max) — el bounding box de Valencia.
+    resolution : int
+        Número de celdas por eje (resolution x resolution puntos en total).
+
+    Returns
+    -------
+    pd.DataFrame con columnas lat, lon, value
+    """
+    lat_min, lat_max, lon_min, lon_max = bounds
+    lats = np.linspace(lat_min, lat_max, resolution)
+    lons = np.linspace(lon_min, lon_max, resolution)
+
+    known_points = build_known_points(stations_df, value_column)
+
+    rows = []
+    for lat in lats:
+        for lon in lons:
+            val = idw_interpolate(lat, lon, known_points, n_neighbors=4)
+            rows.append({"lat": lat, "lon": lon, "value": val})
+
+    return pd.DataFrame(rows)
+
+
+# Bounding box aproximado del término municipal de Valencia ciudad
+VALENCIA_BOUNDS = (39.41, 39.51, -0.43, -0.31)
