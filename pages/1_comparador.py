@@ -77,6 +77,14 @@ ejecutar = st.button("🔍 Calcular y comparar", type="primary")
 # ---------------------------------------------------------------------------
 # Cálculo
 # ---------------------------------------------------------------------------
+# IMPORTANTE: los resultados se guardan en st.session_state en vez de en
+# una variable local. ¿Por qué? st_folium (el mapa interactivo) provoca un
+# re-run completo del script en cuanto se renderiza. Si los resultados
+# vivieran solo dentro de "if ejecutar:" (que depende de st.button, True
+# solo en el ciclo inmediatamente posterior al clic), ese re-run los
+# borraría de inmediato — es justo el bug de "aparece 1 segundo y
+# desaparece". Guardándolos en session_state, sobreviven a cualquier
+# re-run posterior hasta que el usuario pulse el botón otra vez.
 if ejecutar:
     direcciones_validas = [d for d in direcciones_input if d.strip()]
     if not direcciones_validas:
@@ -98,7 +106,6 @@ if ejecutar:
         st.stop()
 
     resultados = []
-    mapa = folium.Map(location=[39.4699, -0.3763], zoom_start=12)
 
     for direccion in direcciones_validas:
         geo = geocode_address(direccion)
@@ -142,25 +149,37 @@ if ejecutar:
             }
         )
 
-        folium.Marker(
-            [lat, lon],
-            tooltip=f"{direccion} — IBUP: {ibup_result['ibup']}",
-            icon=folium.Icon(color="green" if ibup_result["ibup"] and ibup_result["ibup"] >= 60 else "orange"),
-        ).add_to(mapa)
-
     if not resultados:
+        st.session_state.pop("comparador_resultados", None)
         st.stop()
 
-    # -----------------------------------------------------------------------
-    # Resultados: mapa + radar + tabla
-    # -----------------------------------------------------------------------
+    # Guardar en session_state para que sobreviva al re-run de st_folium
+    st.session_state["comparador_resultados"] = resultados
+
+# ---------------------------------------------------------------------------
+# Mostrar resultados (si existen en session_state, de este ciclo o de uno
+# anterior) — este bloque ya NO depende de "ejecutar", así que un re-run
+# disparado por st_folium no lo hace desaparecer.
+# ---------------------------------------------------------------------------
+if "comparador_resultados" in st.session_state:
+    resultados = st.session_state["comparador_resultados"]
+
+    mapa = folium.Map(location=[39.4699, -0.3763], zoom_start=12)
+    for r in resultados:
+        ibup_val = r["ibup"]["ibup"]
+        folium.Marker(
+            [r["lat"], r["lon"]],
+            tooltip=f"{r['direccion'][:40]} — IBUP: {ibup_val}",
+            icon=folium.Icon(color="green" if ibup_val and ibup_val >= 60 else "orange"),
+        ).add_to(mapa)
+
     st.divider()
     st.subheader("Resultados")
 
     col_mapa, col_scores = st.columns([1, 1])
 
     with col_mapa:
-        st_folium(mapa, width=700, height=450)
+        st_folium(mapa, width=700, height=450, key="comparador_mapa")
 
     with col_scores:
         for r in resultados:
@@ -193,7 +212,7 @@ if ejecutar:
         showlegend=True,
         title="Comparativa de componentes (0 = peor, 100 = mejor)",
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # Tabla de valores crudos
     st.markdown("##### Valores estimados (sin normalizar)")
