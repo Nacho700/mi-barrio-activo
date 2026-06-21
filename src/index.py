@@ -24,26 +24,63 @@ REFERENCE_RANGES = {
     "no2": {"bueno": 10, "malo": 40},       # ug/m3 (límite anual UE: 40)
     "pm10": {"bueno": 15, "malo": 50},      # ug/m3 (límite diario UE: 50)
     "pm25": {"bueno": 5, "malo": 25},       # ug/m3 (guía OMS 2021: 5 anual)
-    "ruido_db": {"bueno": 45, "malo": 70},  # dB — NOTA: sin datos reales aún
+    "ruido_db": {"bueno": 50, "malo": 70},  # dB(A) — estimado por proximidad a tráfico (ver noise_inference.py)
     "tiempo_deporte_min": {"bueno": 5, "malo": 25},
     "tiempo_bici_min": {"bueno": 3, "malo": 20},
     "tiempo_verde_min": {"bueno": 3, "malo": 20},
 }
 
-# Pesos por defecto. 'ruido_db' se deja definido (peso 0) porque
-# REFERENCE_RANGES lo soporta y en el futuro podría alimentarse con datos
-# reales; compute_ibup() ignora y renormaliza automáticamente los
-# componentes ausentes, así que omitirlo de raw_values ya basta — el peso
-# 0 aquí es solo documentación de que, si llegara el dato, no se
-# sobrerrepresentaría sin querer.
 DEFAULT_WEIGHTS = {
-    "no2": 0.25,
-    "pm10": 0.15,
-    "pm25": 0.10,
-    "ruido_db": 0.0,
-    "tiempo_deporte_min": 0.25,
-    "tiempo_bici_min": 0.10,
-    "tiempo_verde_min": 0.15,
+    "no2": 0.20,
+    "pm10": 0.12,
+    "pm25": 0.08,
+    "ruido_db": 0.20,
+    "tiempo_deporte_min": 0.18,
+    "tiempo_bici_min": 0.08,
+    "tiempo_verde_min": 0.14,
+}
+
+# ---------------------------------------------------------------------------
+# Perfiles de usuario: cada perfil repondera automáticamente el índice
+# según lo que más le importa a ese tipo de persona. Son pesos curados a
+# mano (no aprendidos de datos), pensados como una ayuda de partida que el
+# usuario puede seguir ajustando manualmente si quiere.
+# ---------------------------------------------------------------------------
+PERFILES_USUARIO = {
+    "equilibrado": {
+        "nombre": "⚖️ Equilibrado",
+        "descripcion": "Un poco de todo, sin priorizar nada en especial.",
+        "weights": DEFAULT_WEIGHTS,
+    },
+    "familia_ninos": {
+        "nombre": "👨‍👩‍👧 Familia con niños",
+        "descripcion": "Prioriza aire limpio, poco ruido y zonas verdes para jugar.",
+        "weights": {
+            "no2": 0.22, "pm10": 0.14, "pm25": 0.12, "ruido_db": 0.22,
+            "tiempo_deporte_min": 0.08, "tiempo_bici_min": 0.04, "tiempo_verde_min": 0.18,
+        },
+    },
+    "deportista": {
+        "nombre": "🏃 Deportista",
+        "descripcion": "Prioriza acceso rápido a instalaciones deportivas, carril bici y zonas verdes para entrenar.",
+        "weights": {
+            "no2": 0.15, "pm10": 0.10, "pm25": 0.08, "ruido_db": 0.07,
+            "tiempo_deporte_min": 0.30, "tiempo_bici_min": 0.18, "tiempo_verde_min": 0.12,
+        },
+    },
+    "mayor": {
+        "nombre": "🧓 Persona mayor",
+        "descripcion": "Prioriza tranquilidad (poco ruido) y aire limpio por encima de la accesibilidad deportiva.",
+        "weights": {
+            "no2": 0.24, "pm10": 0.16, "pm25": 0.12, "ruido_db": 0.28,
+            "tiempo_deporte_min": 0.04, "tiempo_bici_min": 0.02, "tiempo_verde_min": 0.14,
+        },
+    },
+    "personalizado": {
+        "nombre": "🎛️ Personalizado",
+        "descripcion": "Ajusta tú mismo cada peso con los sliders.",
+        "weights": None,  # se rellena con los sliders del usuario
+    },
 }
 
 
