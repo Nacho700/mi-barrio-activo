@@ -20,7 +20,7 @@ import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
 
-from src.geocoding import geocode_address
+from src.geocoding import geocode_address, GeocodingServiceError
 from src.data_helpers import (
     load_estaciones_contaminacion,
     load_geojson_points,
@@ -334,7 +334,17 @@ if ejecutar:
     resultados = []
 
     for direccion in direcciones_validas:
-        geo = geocode_address(direccion)
+        try:
+            geo = geocode_address(direccion)
+        except GeocodingServiceError:
+            st.error(
+                f"⚠️ El servicio de geocodificación (Nominatim/OpenStreetMap) no respondió "
+                f"al buscar '{direccion}'. **Esto no significa que la dirección esté mal "
+                f"escrita** — es un servicio externo gratuito que a veces se satura. "
+                f"Espera unos segundos y vuelve a intentarlo.",
+                icon="⚠️",
+            )
+            continue
         if geo is None:
             st.warning(f"No se pudo localizar: '{direccion}'. Prueba a ser más específico.")
             continue
