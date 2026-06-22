@@ -29,11 +29,11 @@ COMPONENTE_LABELS = {
     "no2": "NO2 (ug/m3)",
     "pm10": "PM10 (ug/m3)",
     "pm25": "PM2.5 (ug/m3)",
-    "ruido_db": "Ruido estimado (dB)",
-    "tiempo_deporte_min": "Acceso a deporte (min)",
-    "tiempo_bici_min": "Acceso a carril bici (min)",
-    "tiempo_verde_min": "Acceso a zona verde (min)",
-    "tiempo_transporte_min": "Transporte público (min)",
+    "ruido_db": "Estimated noise (dB)",
+    "tiempo_deporte_min": "Sports access (min)",
+    "tiempo_bici_min": "Bike lane access (min)",
+    "tiempo_verde_min": "Green space access (min)",
+    "tiempo_transporte_min": "Public transport (min)",
 }
 
 
@@ -93,11 +93,11 @@ def generar_informe_comparativo(resultados, perfil_usado, nombre_archivo=None):
 
     story = []
 
-    story.append(Paragraph("Mi Barrio Activo y Sano — Informe comparativo", title_style))
+    story.append(Paragraph("Mi Barrio Activo y Sano — Comparative report", title_style))
     story.append(
         Paragraph(
-            f"Generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M')} · "
-            f"Perfil aplicado: {perfil_usado}",
+            f"Generated on {datetime.now().strftime('%d/%m/%Y at %H:%M')} · "
+            f"Profile applied: {perfil_usado}",
             subtitle_style,
         )
     )
@@ -106,18 +106,18 @@ def generar_informe_comparativo(resultados, perfil_usado, nombre_archivo=None):
     story.append(Spacer(1, 12))
 
     # --- Resumen de IBUP por dirección ---
-    story.append(Paragraph("Resumen — Índice de Bienestar Urbano Personal", h2_style))
-    tabla_resumen = [["Dirección", "IBUP", "Tipo de zona"]]
+    story.append(Paragraph("Summary — Personal Urban Wellbeing Index", h2_style))
+    tabla_resumen = [["Address", "IBUP", "Neighbourhood type"]]
     for r in resultados:
         ibup_val = r["ibup"]["ibup"]
         cluster_info = r.get("cluster_info")
         # Quitamos emojis del texto: reportlab con las fuentes estándar
         # (Helvetica) no renderiza emojis Unicode, aparecerían como
         # cuadrados negros en el PDF.
-        etiqueta_cluster = _quitar_emojis(cluster_info["etiqueta"]) if cluster_info else "N/D"
+        etiqueta_cluster = _quitar_emojis(cluster_info["etiqueta"]) if cluster_info else "N/A"
         tabla_resumen.append([
             r["direccion"][:55],
-            f"{ibup_val:.0f}/100" if ibup_val is not None else "N/D",
+            f"{ibup_val:.0f}/100" if ibup_val is not None else "N/A",
             etiqueta_cluster,
         ])
 
@@ -141,14 +141,14 @@ def generar_informe_comparativo(resultados, perfil_usado, nombre_archivo=None):
     story.append(Spacer(1, 16))
 
     # --- Detalle por componente ---
-    story.append(Paragraph("Detalle por componente", h2_style))
+    story.append(Paragraph("Breakdown by component", h2_style))
     columnas_presentes = [c for c in COMPONENTE_LABELS if any(r["raw"].get(c) is not None for r in resultados)]
-    tabla_detalle = [["Componente"] + [r["direccion"][:25] for r in resultados]]
+    tabla_detalle = [["Component"] + [r["direccion"][:25] for r in resultados]]
     for c in columnas_presentes:
         fila = [COMPONENTE_LABELS[c]]
         for r in resultados:
             val = r["raw"].get(c)
-            fila.append(f"{val:.1f}" if val is not None else "N/D")
+            fila.append(f"{val:.1f}" if val is not None else "N/A")
         tabla_detalle.append(fila)
 
     t2 = Table(tabla_detalle, colWidths=[4.5 * cm] + [round(12.0 / max(len(resultados), 1), 1) * cm] * len(resultados))
@@ -171,13 +171,13 @@ def generar_informe_comparativo(resultados, perfil_usado, nombre_archivo=None):
     story.append(Spacer(1, 16))
 
     # --- Nota metodológica ---
-    story.append(Paragraph("Nota metodológica", h2_style))
+    story.append(Paragraph("Methodological note", h2_style))
     nota_txt = (
-        "Los valores de contaminación se estiman por interpolación espacial (IDW) a partir "
-        "de las estaciones reales de Valencia. El ruido es una ESTIMACIÓN basada en la "
-        "intensidad de tráfico cercana, no una medición certificada. Los tiempos de acceso "
-        "se calculan sobre el grafo real de calles de Valencia (OpenStreetMap), no en línea "
-        "recta. Proyecto académico — UPV, Grado en Ciencia de Datos."
+        "Pollution values are estimated through spatial interpolation (IDW) from "
+        "Valencia's real monitoring stations. Noise is an ESTIMATE based on nearby "
+        "traffic intensity, not a certified measurement. Access times are calculated "
+        "on Valencia's real street network (OpenStreetMap), not in a straight line. "
+        "Academic project — UPV, Data Science degree."
     )
     story.append(Paragraph(nota_txt, body_style))
 
