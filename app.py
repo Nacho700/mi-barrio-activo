@@ -294,13 +294,24 @@ if perfil_seleccionado != "personalizado":
 # ---------------------------------------------------------------------------
 st.markdown("### 📍 Addresses to compare")
 n_direcciones = st.slider("How many addresses do you want to compare?", 1, 3, 2)
+st.caption("💶 Optionally add the asking price of each flat to see which one gives you the best value for money.")
 
 direcciones_input = []
+precios_input = []
 cols = st.columns(n_direcciones)
 for i, col in enumerate(cols):
     with col:
         addr = st.text_input(f"Address {i+1}", key=f"addr_{i}", placeholder="Street, number, Valencia")
         direcciones_input.append(addr)
+        precio = st.number_input(
+            f"Price (€) — optional",
+            key=f"precio_{i}",
+            min_value=0,
+            value=0,
+            step=5000,
+            help="Leave at 0 if you don't want to compare value for money for this address.",
+        )
+        precios_input.append(precio if precio > 0 else None)
 
 # ---------------------------------------------------------------------------
 # Pesos: predefinidos por perfil, o sliders si el perfil es "personalizado"
@@ -347,8 +358,10 @@ ejecutar = st.button("🔍 Calculate and compare", type="primary")
 # "if ejecutar:" (True solo en el ciclo inmediatamente posterior al clic),
 # ese re-run los borraría de inmediato.
 if ejecutar:
-    direcciones_validas = [d for d in direcciones_input if d.strip()]
-    if not direcciones_validas:
+    direcciones_con_precio = [
+        (d, p) for d, p in zip(direcciones_input, precios_input) if d.strip()
+    ]
+    if not direcciones_con_precio:
         st.warning("Enter at least one address.")
         st.stop()
 
@@ -382,7 +395,7 @@ if ejecutar:
 
     resultados = []
 
-    for direccion in direcciones_validas:
+    for direccion, precio in direcciones_con_precio:
         try:
             geo = geocode_address(direccion)
         except GeocodingServiceError:
@@ -429,6 +442,15 @@ if ejecutar:
 
         ibup_result = compute_ibup(raw_values, weights)
 
+        # Value score: cuántos puntos de IBUP se "compran" por cada
+        # 100.000€ de precio. Solo se calcula si el usuario introdujo un
+        # precio real — no inventamos ningún dato de mercado inmobiliario,
+        # ya que no existe un dataset abierto de precios de vivienda en
+        # venta para Valencia (los portales privados no tienen API pública).
+        value_score = None
+        if precio and precio > 0 and ibup_result["ibup"] is not None:
+            value_score = round(ibup_result["ibup"] / (precio / 100000), 2)
+
         resultados.append(
             {
                 "direccion": geo["direccion_completa"],
@@ -443,6 +465,8 @@ if ejecutar:
                 "conteo_verde_15min": conteo_verde_15min,
                 "conteo_deporte_15min": conteo_deporte_15min,
                 "transporte_cercano": transporte_cercano,
+                "precio": precio,
+                "value_score": value_score,
             }
         )
 
@@ -519,6 +543,19 @@ if "resultados" in st.session_state:
             else:
                 color = "#C65D3B"
             pct = ibup_val if ibup_val is not None else 0
+
+            valor_extra_html = ""
+            if r.get("precio"):
+                value_score = r.get("value_score")
+                valor_extra_html = f"""
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed rgba(43,38,32,0.12);">
+                        <span style="font-size:0.78rem; color:#7a6f60;">€{r['precio']:,.0f}</span>
+                        <span style="font-size:0.78rem; color:#7a6f60;">
+                            Value score: <strong style="color:#2F6E8C;">{value_score}</strong> IBUP pts / €100k
+                        </span>
+                    </div>
+                """
+
             st.markdown(
                 f"""
                 <div style="background:white; border:1px solid rgba(43,38,32,0.10);
@@ -533,10 +570,20 @@ if "resultados" in st.session_state:
                         <div style="background:{color}; width:{pct}%; height:6px; border-radius:100px;"></div>
                     </div>
                     <div style="font-size:0.8rem; color:#7a6f60; margin-top:0.3rem;">{ibup_label(ibup_val)}</div>
+                    {valor_extra_html}
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+
+    precios_disponibles = [r for r in resultados if r.get("precio")]
+    if len(precios_disponibles) >= 2:
+        mejor_valor = max(precios_disponibles, key=lambda r: r["value_score"] or 0)
+        st.info(
+            f"💶 **Best value for money**: {mejor_valor['direccion'][:50]} "
+            f"({mejor_valor['value_score']} IBUP points per €100k)",
+            icon="💶",
+        )
 
     # --- Mapa de tipos de barrio (clusters) ------------------------------
     cluster_grid_mapa = load_cluster_grid()
@@ -956,7 +1003,13 @@ actual shortest pedestrian route between the point and each facility.
 
     # --- Tabla de valores crudos ------------------------------------------
     with st.expander("📐 View raw (non-normalised) numbers"):
-        tabla = pd.DataFrame([r["raw"] for r in resultados], index=[r["direccion"][:30] for r in resultados])
+        filas_tabla = []
+        for r in resultados:
+            fila = dict(r["raw"])
+            fila["price_eur"] = r.get("precio")
+            fila["value_score"] = r.get("value_score")
+            filas_tabla.append(fila)
+        tabla = pd.DataFrame(filas_tabla, index=[r["direccion"][:30] for r in resultados])
         st.dataframe(tabla)
 
     # --- Exportar a PDF ----------------------------------------------------
