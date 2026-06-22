@@ -26,27 +26,181 @@ from src.data_helpers import (
     load_geojson_points,
     load_instalaciones_deportivas,
     load_intensidad_trafico,
+    load_mercados,
+    load_centros_salud,
 )
-from src.interpolation import estimate_environmental_profile, get_nearest_station_info
-from src.accessibility import compute_accessibility_profile, top_n_nearest
+from src.interpolation import estimate_environmental_profile, get_nearest_station_info, compute_city_averages
+from src.accessibility import compute_accessibility_profile, top_n_nearest, count_within_minutes
 from src.noise_inference import estimate_noise_from_traffic
 from src.index import compute_ibup, ibup_label, PERFILES_USUARIO
+from src.clustering import load_cluster_grid, get_cluster_for_point
 
 st.set_page_config(page_title="Mi Barrio Activo y Sano", page_icon="🏠", layout="wide")
 
 # ---------------------------------------------------------------------------
+# Estilos — paleta mediterránea inspirada en Valencia: crema cálido,
+# terracota de teja, verde Turia, azul cerámica. Tipografía display con
+# carácter (Fraunces) para títulos, sans-serif limpia para el cuerpo.
+# ---------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap');
+
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+    h1, h2, h3 {
+        font-family: 'Fraunces', serif !important;
+        font-weight: 600 !important;
+        color: #2B2620 !important;
+        letter-spacing: -0.01em;
+    }
+
+    /* Hero */
+    .hero-wrap {
+        background: linear-gradient(135deg, #F2E9D8 0%, #FBF6EE 60%);
+        border-radius: 18px;
+        padding: 2.2rem 2.4rem;
+        margin-bottom: 1.4rem;
+        border: 1px solid rgba(43,38,32,0.08);
+        position: relative;
+        overflow: hidden;
+    }
+    .hero-wrap::before {
+        content: "";
+        position: absolute;
+        top: -40px; right: -40px;
+        width: 180px; height: 180px;
+        background: #E8B4A0;
+        border-radius: 50%;
+        opacity: 0.35;
+    }
+    .hero-eyebrow {
+        display: inline-block;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #C65D3B;
+        background: rgba(198,93,59,0.10);
+        padding: 0.25rem 0.7rem;
+        border-radius: 100px;
+        margin-bottom: 0.8rem;
+    }
+    .hero-title {
+        font-family: 'Fraunces', serif;
+        font-weight: 700;
+        font-size: 2.3rem;
+        line-height: 1.1;
+        color: #2B2620;
+        margin: 0 0 0.5rem 0;
+        position: relative;
+        z-index: 1;
+    }
+    .hero-sub {
+        font-size: 1.05rem;
+        color: #54493e;
+        max-width: 62ch;
+        position: relative;
+        z-index: 1;
+        line-height: 1.5;
+    }
+
+    /* Feature pills row */
+    .feature-row { display: flex; gap: 0.9rem; margin-top: 1.4rem; flex-wrap: wrap; position: relative; z-index: 1; }
+    .feature-pill {
+        flex: 1; min-width: 200px;
+        background: white;
+        border: 1px solid rgba(43,38,32,0.08);
+        border-radius: 12px;
+        padding: 0.9rem 1.1rem;
+        box-shadow: 0 1px 2px rgba(43,38,32,0.04);
+    }
+    .feature-pill .icon { font-size: 1.4rem; margin-bottom: 0.3rem; display: block; }
+    .feature-pill .label { font-weight: 600; font-size: 0.92rem; color: #2B2620; }
+    .feature-pill .desc { font-size: 0.82rem; color: #7a6f60; margin-top: 0.15rem; }
+
+    /* Cluster badge */
+    .cluster-badge {
+        display: inline-block;
+        background: #CFE0D3;
+        color: #3D6B4F;
+        font-weight: 600;
+        font-size: 0.85rem;
+        padding: 0.3rem 0.8rem;
+        border-radius: 100px;
+        margin-bottom: 0.6rem;
+    }
+
+    /* Address card top accent */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 14px !important;
+    }
+
+    /* Section dividers spacing */
+    hr { margin: 1.2rem 0 !important; opacity: 0.25; }
+
+    /* Perfil selector chips */
+    div[role="radiogroup"] {
+        gap: 0.6rem;
+    }
+    div[role="radiogroup"] label {
+        background: white;
+        border: 1.5px solid rgba(43,38,32,0.12);
+        border-radius: 10px;
+        padding: 0.55rem 1rem !important;
+        transition: all 0.15s ease;
+    }
+    div[role="radiogroup"] label:hover {
+        border-color: #C65D3B;
+        background: rgba(198,93,59,0.05);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------------------------------------------------------------------------
 # Cabecera
 # ---------------------------------------------------------------------------
-st.title("🏠 Mi Barrio Activo y Sano")
 st.markdown(
-    "#### Decide dónde vivir en Valencia con datos reales, no solo con el precio"
-)
-st.markdown(
-    "Cuando buscas piso miras precio y metros — pero casi nunca puedes saber "
-    "objetivamente **cuánto ruido tendrás**, **cuánta contaminación vas a "
-    "respirar**, o **a cuántos minutos a pie está el parque o el polideportivo "
-    "más cercano**. Esta herramienta lo calcula por ti con datos abiertos "
-    "reales del Ayuntamiento de València."
+    """
+    <div class="hero-wrap">
+        <span class="hero-eyebrow">Open Data València · Proyecto UPV</span>
+        <p class="hero-title">Decide dónde vivir en Valencia<br>con datos, no solo con el precio</p>
+        <p class="hero-sub">
+            Cuando buscas piso miras precio y metros — pero casi nunca puedes saber
+            objetivamente cuánto ruido tendrás, cuánta contaminación vas a respirar,
+            o a cuántos minutos a pie está el parque o el polideportivo más cercano.
+            Esta herramienta lo calcula por ti con datos abiertos reales del
+            Ayuntamiento de València.
+        </p>
+        <div class="feature-row">
+            <div class="feature-pill">
+                <span class="icon">🌬️</span>
+                <div class="label">Aire y ruido</div>
+                <div class="desc">Contaminación real + ruido estimado por tráfico</div>
+            </div>
+            <div class="feature-pill">
+                <span class="icon">🌳</span>
+                <div class="label">Verde y deporte</div>
+                <div class="desc">Minutos reales a pie, no en línea recta</div>
+            </div>
+            <div class="feature-pill">
+                <span class="icon">🏷️</span>
+                <div class="label">Tipo de barrio</div>
+                <div class="desc">Clustering automático por similitud</div>
+            </div>
+            <div class="feature-pill">
+                <span class="icon">👤</span>
+                <div class="label">A tu medida</div>
+                <div class="desc">Perfiles que reponderan lo que te importa</div>
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 with st.expander("ℹ️ Metodología y fuentes de datos"):
@@ -167,6 +321,8 @@ if ejecutar:
         ) + load_geojson_points("arbolado.geojson")
         deporte_points = load_instalaciones_deportivas()
         traffic_segments = load_intensidad_trafico()
+        cluster_grid = load_cluster_grid()
+        city_averages = compute_city_averages(stations_with_values)
 
     if stations_with_values.empty:
         st.error(
@@ -188,11 +344,14 @@ if ejecutar:
         perfil_ambiental = estimate_environmental_profile(lat, lon, stations_with_values)
         info_estacion = get_nearest_station_info(lat, lon, stations_with_values)
         ruido_info = estimate_noise_from_traffic(lat, lon, traffic_segments)
+        cluster_info = get_cluster_for_point(lat, lon, cluster_grid)
 
         try:
             perfil_acceso = compute_accessibility_profile(
                 lat, lon, carril_bici_points, deporte_points, verde_points
             )
+            conteo_verde_15min = count_within_minutes(lat, lon, verde_points, minutos_max=15)
+            conteo_deporte_15min = count_within_minutes(lat, lon, deporte_points, minutos_max=15)
         except FileNotFoundError as e:
             st.error(str(e))
             st.stop()
@@ -219,6 +378,9 @@ if ejecutar:
                 "info_estacion": info_estacion,
                 "ruido_info": ruido_info,
                 "zona_verde_detalle": perfil_acceso["verde"],
+                "cluster_info": cluster_info,
+                "conteo_verde_15min": conteo_verde_15min,
+                "conteo_deporte_15min": conteo_deporte_15min,
             }
         )
 
@@ -228,6 +390,7 @@ if ejecutar:
 
     st.session_state["resultados"] = resultados
     st.session_state["perfil_usado"] = PERFILES_USUARIO[perfil_seleccionado]["nombre"]
+    st.session_state["city_averages"] = city_averages
 
 # ---------------------------------------------------------------------------
 # Mostrar resultados
@@ -269,36 +432,81 @@ if "resultados" in st.session_state:
     with col_scores:
         for r in resultados:
             ibup_val = r["ibup"]["ibup"]
-            st.metric(
-                label=r["direccion"][:50],
-                value=f"{ibup_val}/100" if ibup_val is not None else "Sin datos",
-                help=ibup_label(ibup_val),
+            if ibup_val is None:
+                color = "#9a9088"
+            elif ibup_val >= 60:
+                color = "#3D6B4F"
+            elif ibup_val >= 40:
+                color = "#C68A2E"
+            else:
+                color = "#C65D3B"
+            pct = ibup_val if ibup_val is not None else 0
+            st.markdown(
+                f"""
+                <div style="background:white; border:1px solid rgba(43,38,32,0.10);
+                            border-radius:12px; padding:0.9rem 1.1rem; margin-bottom:0.7rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                        <span style="font-weight:600; font-size:0.92rem;">{r['direccion'][:48]}</span>
+                        <span style="font-family:'Fraunces',serif; font-weight:700; font-size:1.4rem; color:{color};">
+                            {f"{ibup_val:.0f}" if ibup_val is not None else "—"}<span style="font-size:0.85rem; color:#9a9088;">/100</span>
+                        </span>
+                    </div>
+                    <div style="background:rgba(43,38,32,0.07); border-radius:100px; height:6px; margin-top:0.5rem;">
+                        <div style="background:{color}; width:{pct}%; height:6px; border-radius:100px;"></div>
+                    </div>
+                    <div style="font-size:0.8rem; color:#7a6f60; margin-top:0.3rem;">{ibup_label(ibup_val)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
     # --- Radar comparativo ----------------------------------------------
     st.markdown("##### 📊 Comparativa visual")
     categorias = ["no2", "pm10", "ruido_db", "tiempo_deporte_min", "tiempo_bici_min", "tiempo_verde_min"]
     categorias_labels = ["NO2", "PM10", "Ruido (estimado)", "Acceso deporte", "Acceso bici", "Acceso verde"]
+    paleta_radar = ["#C65D3B", "#3D6B4F", "#2F6E8C"]
 
     fig = go.Figure()
-    for r in resultados:
+    for i, r in enumerate(resultados):
         valores = [r["ibup"]["componentes"].get(c) or 0 for c in categorias]
+        color = paleta_radar[i % len(paleta_radar)]
         fig.add_trace(
-            go.Scatterpolar(r=valores, theta=categorias_labels, fill="toself", name=r["direccion"][:40])
+            go.Scatterpolar(
+                r=valores, theta=categorias_labels, fill="toself", name=r["direccion"][:40],
+                line=dict(color=color, width=2),
+                opacity=0.75,
+            )
         )
     fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 100], gridcolor="rgba(43,38,32,0.12)"),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
         showlegend=True,
-        title="0 = peor, 100 = mejor",
+        title=dict(text="0 = peor, 100 = mejor", font=dict(family="Inter", size=13, color="#7a6f60")),
+        font=dict(family="Inter"),
         height=420,
     )
     st.plotly_chart(fig, width="stretch")
 
     # --- Contexto detallado por dirección --------------------------------
     st.markdown("##### 🔎 Contexto detallado por dirección")
+    city_averages = st.session_state.get("city_averages", {})
     for r in resultados:
         with st.container(border=True):
-            st.markdown(f"#### 📍 {r['direccion'][:70]}")
+            st.markdown(
+                f'<p style="font-family:\'Fraunces\',serif; font-weight:600; '
+                f'font-size:1.25rem; margin-bottom:0.3rem;">📍 {r["direccion"][:70]}</p>',
+                unsafe_allow_html=True,
+            )
+
+            cluster_info = r.get("cluster_info")
+            if cluster_info:
+                st.markdown(
+                    f'<span class="cluster-badge">🏷️ {cluster_info["etiqueta"]}</span>',
+                    unsafe_allow_html=True,
+                )
 
             info_est = r.get("info_estacion")
             ruido_info = r.get("ruido_info")
@@ -309,6 +517,12 @@ if "resultados" in st.session_state:
                 if info_est:
                     st.markdown(f"🟢 {info_est['calidad_aire'] or 'Sin dato'}")
                     st.caption(f"Estación {info_est['nombre']}, a {info_est['distancia_m']:.0f} m")
+                    no2_val = r["raw"].get("no2")
+                    media_no2 = city_averages.get("no2")
+                    if no2_val is not None and media_no2 is not None:
+                        diff = no2_val - media_no2
+                        comparacion = "por debajo de" if diff < 0 else "por encima de"
+                        st.caption(f"NO2: {no2_val:.0f} µg/m³ — {abs(diff):.0f} {comparacion} la media de Valencia ({media_no2:.0f})")
                 else:
                     st.caption("Sin dato")
             with col_b:
@@ -357,37 +571,71 @@ if "resultados" in st.session_state:
                         "inventario de arbolado, sin ficha de zona verde asociada."
                     )
 
+            # --- Qué hay a 15 minutos andando -----------------------------
+            conteo_verde = r.get("conteo_verde_15min")
+            conteo_deporte = r.get("conteo_deporte_15min")
+            if conteo_verde or conteo_deporte:
+                st.markdown("---")
+                st.markdown(
+                    f"**🚶 A menos de 15 min a pie**: "
+                    f"{conteo_verde['conteo'] if conteo_verde else 0} zonas verdes/árboles, "
+                    f"{conteo_deporte['conteo'] if conteo_deporte else 0} instalaciones deportivas"
+                )
+
             # --- Top 5 ---------------------------------------------------
             st.markdown("---")
             key_top5 = f"top5_{r['direccion'][:20]}_{r['lat']}_{r['lon']}"
-            if st.button("🏆 Ver Top 5 zonas verdes e instalaciones deportivas cercanas", key=f"btn_{key_top5}"):
+            if st.button("🏆 Ver Top 5 de zonas verdes, deporte, mercados y centros de salud cercanos", key=f"btn_{key_top5}"):
                 with st.spinner("Calculando rankings..."):
                     verde_points_top5 = load_geojson_points(
                         "zonas_verdes.geojson",
                         extra_props=["n_elementos_fitness", "sup_total", "tipologia"],
                     ) + load_geojson_points("arbolado.geojson")
                     deporte_points_top5 = load_instalaciones_deportivas()
+                    mercados_points_top5 = load_mercados()
+                    salud_points_top5 = load_centros_salud()
 
                     top5_verde = top_n_nearest(r["lat"], r["lon"], verde_points_top5, n=5)
                     top5_deporte = top_n_nearest(r["lat"], r["lon"], deporte_points_top5, n=5)
-                    st.session_state[key_top5] = {"verde": top5_verde, "deporte": top5_deporte}
+                    top5_mercados = top_n_nearest(r["lat"], r["lon"], mercados_points_top5, n=5)
+                    top5_salud = top_n_nearest(r["lat"], r["lon"], salud_points_top5, n=5)
+                    st.session_state[key_top5] = {
+                        "verde": top5_verde,
+                        "deporte": top5_deporte,
+                        "mercados": top5_mercados,
+                        "salud": top5_salud,
+                    }
 
             if key_top5 in st.session_state:
                 top5_data = st.session_state[key_top5]
-                col_top_verde, col_top_deporte = st.columns(2)
+                col_top_verde, col_top_deporte, col_top_mercados, col_top_salud = st.columns(4)
                 with col_top_verde:
-                    st.markdown("**🌳 Top 5 zonas verdes**")
+                    st.markdown("**🌳 Zonas verdes**")
                     if top5_data["verde"]:
                         for i, z in enumerate(top5_data["verde"], 1):
                             nombre_z = z["nombre"] if _es_valido(z["nombre"]) and str(z["nombre"]).lower() != "sin nombre" else "Árbol/zona sin nombre"
-                            st.markdown(f"{i}. {nombre_z} — {z['minutos']} min a pie")
+                            st.markdown(f"{i}. {nombre_z} — {z['minutos']} min")
                     else:
-                        st.caption("Sin datos disponibles.")
+                        st.caption("Sin datos.")
                 with col_top_deporte:
-                    st.markdown("**🏋️ Top 5 instalaciones deportivas**")
+                    st.markdown("**🏋️ Deporte**")
                     if top5_data["deporte"]:
                         for i, d in enumerate(top5_data["deporte"], 1):
-                            st.markdown(f"{i}. {d['nombre']} — {d['minutos']} min a pie")
+                            st.markdown(f"{i}. {d['nombre']} — {d['minutos']} min")
+                    else:
+                        st.caption("Sin datos.")
+                with col_top_mercados:
+                    st.markdown("**🛒 Mercados**")
+                    if top5_data["mercados"]:
+                        for i, m in enumerate(top5_data["mercados"], 1):
+                            st.markdown(f"{i}. {m['nombre']} — {m['minutos']} min")
+                    else:
+                        st.caption("Sin datos.")
+                with col_top_salud:
+                    st.markdown("**🏥 Centros de salud**")
+                    if top5_data["salud"]:
+                        for i, s in enumerate(top5_data["salud"], 1):
+                            st.markdown(f"{i}. {s['nombre']} — {s['minutos']} min")
                     else:
                         st.caption("Sin datos disponibles.")
 
