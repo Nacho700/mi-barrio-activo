@@ -39,15 +39,26 @@ CLUSTER_FEATURES = ["no2", "pm10", "ruido_db", "tiempo_deporte_min", "tiempo_ver
 
 # Etiquetas descriptivas por cluster. Como K-means no da nombres
 # semánticos a los clusters (solo números 0, 1, 2...), estas etiquetas se
-# asignan A MANO tras inspeccionar el centroide de cada cluster (ver
-# generar_clusters_colab.ipynb, celda de inspección de centroides). Si se
-# regenera el clustering con datos distintos, estas etiquetas pueden
-# necesitar revisión.
+# asignaron A MANO tras inspeccionar el centroide real de cada cluster
+# (ejecución en Colab del 22/06/2026, k=4):
+#
+#   cluster  no2   pm10  ruido_db  t_deporte  t_verde
+#   0        33.1  29.1  35.2      8.2 min    4.1 min   -> ruido algo alto, accesos rápidos
+#   1        31.0  28.1  24.3      16.6 min   8.9 min   -> ruido moderado, accesos medios
+#   2        32.1  28.7  25.0      47.2 min   44.6 min  -> accesos muy largos (periferia)
+#   3        29.4  24.4  33.9      13.0 min   6.3 min    -> ruido alto, accesos rápidos
+#
+# NOTA: NO2/PM10 apenas varían entre clusters porque solo hay ~11
+# estaciones de contaminación en Valencia, así que la interpolación da
+# valores parecidos en casi toda la ciudad — el clustering separa sobre
+# todo por ACCESIBILIDAD (deporte/verde) y ruido, no por contaminación.
+# Si se regenera el clustering con datos distintos, vuelve a comparar los
+# centroides nuevos contra esta tabla antes de reusar las etiquetas.
 CLUSTER_LABELS = {
-    0: "🌳 Verde y tranquilo",
-    1: "🏙️ Céntrico y dinámico",
-    2: "🚗 Bien conectado, más tráfico",
-    3: "🏘️ Residencial equilibrado",
+    0: "🏙️ Céntrico y dinámico",
+    1: "🏘️ Residencial equilibrado",
+    2: "🌾 Periferia, poco conectado",
+    3: "🚗 Bien conectado, más tráfico",
 }
 
 
