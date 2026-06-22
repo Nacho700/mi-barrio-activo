@@ -119,6 +119,28 @@ def get_nearest_station_info(lat, lon, stations_df):
     }
 
 
+def compute_city_averages(stations_df, columns=("no2", "pm10", "pm25")):
+    """
+    Calcula la media de cada contaminante a través de TODAS las estaciones
+    de Valencia, para dar contexto comparativo: "tu NO2 (25) está por
+    debajo de la media de la ciudad (32)" es mucho más legible que un
+    número aislado para alguien que no sabe qué es "bueno" o "malo".
+
+    Returns
+    -------
+    dict {"no2": media, "pm10": media, "pm25": media} — None en cualquier
+    columna que no exista o no tenga datos válidos.
+    """
+    medias = {}
+    for col in columns:
+        if col not in stations_df.columns:
+            medias[col] = None
+            continue
+        valores = stations_df[col].dropna()
+        medias[col] = round(float(valores.mean()), 1) if len(valores) > 0 else None
+    return medias
+
+
 def estimate_environmental_profile(lat, lon, stations_df, pollutant_cols=None):
     """
     Devuelve un diccionario con la estimación interpolada de cada
