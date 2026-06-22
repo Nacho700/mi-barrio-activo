@@ -80,6 +80,18 @@ ARCGIS_LAYERS = {
     ),  # Capa "Intensitat transit trams" — intensidad media de vehículos (IMV)
     # por tramo de calle. Se usa para inferir ruido (ver src/noise_inference.py),
     # ya que el dataset de ruido de Valencia (4 estaciones) no da valores en dB.
+    "paradas_emt": (
+        "https://geoportal.valencia.es/server/rest/services/OPENDATA/"
+        "Trafico/MapServer/226/query"
+    ),  # Paradas de autobús EMT, con líneas que pasan por cada parada
+    "estaciones_fgv": (
+        "https://geoportal.valencia.es/server/rest/services/OPENDATA/"
+        "Trafico/MapServer/221/query"
+    ),  # Estaciones de Metrovalencia/tranvía (FGV)
+    "valenbisi": (
+        "https://geoportal.valencia.es/server/rest/services/OPENDATA/"
+        "Trafico/MapServer/228/query"
+    ),  # Estaciones de bici pública Valenbisi, con disponibilidad en tiempo real
 }
 
 # CSV directos de contaminación por estación (un archivo por estación,
@@ -284,6 +296,21 @@ def download_all():
     download_arcgis_layer_as_geojson(
         ARCGIS_LAYERS["intensidad_trafico"],
         RAW_DIR / "intensidad_trafico.geojson",
+    )
+
+    download_arcgis_layer_as_geojson(
+        ARCGIS_LAYERS["paradas_emt"],
+        RAW_DIR / "paradas_emt.geojson",
+    )
+
+    download_arcgis_layer_as_geojson(
+        ARCGIS_LAYERS["estaciones_fgv"],
+        RAW_DIR / "estaciones_fgv.geojson",
+    )
+
+    download_arcgis_layer_as_geojson(
+        ARCGIS_LAYERS["valenbisi"],
+        RAW_DIR / "valenbisi.geojson",
     )
 
     download_street_graph()
