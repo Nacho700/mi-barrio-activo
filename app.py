@@ -256,6 +256,40 @@ perfil_idx = st.radio(
 perfil_seleccionado = perfil_keys[perfil_idx]
 st.caption(f"💡 {PERFILES_USUARIO[perfil_seleccionado]['descripcion']}")
 
+# --- Visualizar los pesos del perfil elegido (antes de calcular nada) ----
+if perfil_seleccionado != "personalizado":
+    pesos_perfil = PERFILES_USUARIO[perfil_seleccionado]["weights"]
+    nombres_componentes_pesos = {
+        "no2": "NO2", "pm10": "PM10", "pm25": "PM2.5", "ruido_db": "Ruido",
+        "tiempo_deporte_min": "Deporte", "tiempo_bici_min": "Carril bici",
+        "tiempo_verde_min": "Zona verde", "tiempo_transporte_min": "Transporte",
+    }
+    paleta_componentes_pesos = {
+        "no2": "#C65D3B", "pm10": "#D98C6F", "pm25": "#E8B4A0", "ruido_db": "#8C4A3A",
+        "tiempo_deporte_min": "#3D6B4F", "tiempo_bici_min": "#6B9C7A",
+        "tiempo_verde_min": "#A8C9AE", "tiempo_transporte_min": "#2F6E8C",
+    }
+    with st.expander("📐 Ver cómo reparte la importancia este perfil"):
+        fig_pesos = go.Figure(
+            data=[
+                go.Pie(
+                    labels=[nombres_componentes_pesos[k] for k in pesos_perfil],
+                    values=[v * 100 for v in pesos_perfil.values()],
+                    hole=0.55,
+                    marker=dict(colors=[paleta_componentes_pesos[k] for k in pesos_perfil]),
+                    textinfo="label+percent",
+                    textfont=dict(family="Inter", size=12),
+                )
+            ]
+        )
+        fig_pesos.update_layout(
+            height=320,
+            showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)",
+            margin=dict(t=10, b=10, l=10, r=10),
+        )
+        st.plotly_chart(fig_pesos, width="stretch")
+
 # ---------------------------------------------------------------------------
 # Inputs de direcciones
 # ---------------------------------------------------------------------------
@@ -610,14 +644,20 @@ if "resultados" in st.session_state:
 
     fig_barras = go.Figure()
     direcciones_cortas = [r["direccion"][:30] for r in resultados]
+    ibup_totales = [r["ibup"]["ibup"] or 1 for r in resultados]  # evitar división por 0
 
     for comp_key, comp_nombre in nombres_componentes.items():
         valores_aporte = []
-        for r in resultados:
+        textos_pct = []
+        for r, ibup_total in zip(resultados, ibup_totales):
             score = r["ibup"]["componentes"].get(comp_key)
             peso = r["ibup"]["pesos_usados"].get(comp_key, 0)
             aporte = (score * peso) if (score is not None) else 0
             valores_aporte.append(aporte)
+            pct_sobre_total = (aporte / ibup_total * 100) if ibup_total else 0
+            # Solo mostramos el % si el segmento es suficientemente grande
+            # como para que el texto no se solape (umbral visual, no de datos)
+            textos_pct.append(f"{pct_sobre_total:.0f}%" if pct_sobre_total >= 6 else "")
 
         if all(v == 0 for v in valores_aporte):
             continue  # este componente no tiene datos en ninguna dirección, no lo dibujamos
@@ -627,20 +667,26 @@ if "resultados" in st.session_state:
                 name=comp_nombre,
                 x=direcciones_cortas,
                 y=valores_aporte,
+                text=textos_pct,
+                textposition="inside",
+                textfont=dict(color="white", size=11, family="Inter"),
                 marker_color=paleta_componentes.get(comp_key, "#9a9088"),
+                hovertemplate=f"{comp_nombre}: %{{y:.1f}} puntos<extra></extra>",
             )
         )
 
     fig_barras.update_layout(
         barmode="stack",
-        height=380,
+        height=400,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Inter"),
         yaxis=dict(title="IBUP (puntos aportados)", gridcolor="rgba(43,38,32,0.08)"),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.25),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3),
+        uniformtext=dict(minsize=9, mode="hide"),
     )
     st.plotly_chart(fig_barras, width="stretch")
+    st.caption("Los porcentajes dentro de cada segmento indican qué parte del IBUP total de esa dirección aporta ese componente.")
 
     # --- Contexto detallado por dirección --------------------------------
     st.markdown("##### 🔎 Contexto detallado por dirección")
