@@ -142,6 +142,30 @@ def top_n_nearest(lat, lon, target_points, n=5, max_candidates=15):
     return ranked[:n]
 
 
+def count_within_minutes(lat, lon, target_points, minutos_max=15, max_candidates=25):
+    """
+    Cuenta cuántos elementos de target_points están a menos de
+    `minutos_max` a pie real, en vez de devolver solo el más cercano.
+
+    Útil para una métrica más intuitiva tipo "3 parques, 2 polideportivos
+    a menos de 15 min" en vez de solo "el parque más cercano está a 8 min".
+
+    max_candidates se sube respecto a top_n_nearest porque aquí interesa
+    contar TODOS los que caen dentro del radio, no solo un ranking corto —
+    si hay muchos elementos densos cerca (p.ej. zonas verdes en el centro),
+    conviene partir de más candidatos para no subestimar el conteo.
+
+    Returns
+    -------
+    dict con {"conteo": int, "elementos": list of dict} — los elementos
+    son los mismos dicts que devuelve _ranked_walking_times, ya filtrados
+    a los que están dentro del radio.
+    """
+    ranked = _ranked_walking_times(lat, lon, target_points, max_candidates=max_candidates)
+    dentro_del_radio = [r for r in ranked if r["minutos"] <= minutos_max]
+    return {"conteo": len(dentro_del_radio), "elementos": dentro_del_radio}
+
+
 def compute_accessibility_profile(lat, lon, carril_bici_points, deporte_points, verde_points):
     """
     Devuelve el perfil de accesibilidad completo de un punto: tiempo a pie
