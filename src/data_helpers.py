@@ -118,26 +118,17 @@ def load_geojson_points(filename, nombre_col_candidates=("nombre", "denominacio"
 
 
 @st.cache_data
-def load_instalaciones_deportivas():
+def _load_equipamientos_categoria(keywords, nombre_categoria_log="equipamientos"):
     """
-    Carga instalaciones deportivas filtrando el GeoJSON de Equipamientos
-    Municipales (que incluye también bibliotecas, mercados, centros de
-    salud, etc.) por su campo de categoría.
+    Función base: carga el GeoJSON de Equipamientos Municipales y filtra
+    por la columna 'clase' (confirmada en el geoportal de Valencia) buscando
+    cualquiera de las palabras clave dadas.
 
-    Columna real confirmada en el geoportal de Valencia: 'clase' (valores
-    de texto como 'Instalaciones deportivas', 'Bibliotecas', 'Mercados',
-    etc.), con 'idclase' como su código numérico equivalente y 'equipamien'
-    como el nombre del lugar.
+    keywords : list of str (en minúsculas) — p.ej. ["deport", "esport"] para
+    instalaciones deportivas, ["mercat", "mercado"] para mercados.
 
-    NOTA histórica: una versión anterior de esta función detectaba la
-    columna de categoría buscando automáticamente la palabra "deport" en
-    cualquier columna de texto. Esto tenía un bug: el nombre del propio
-    lugar (columna 'equipamien', p.ej. "Polideportivo Petxina") también
-    contiene "deport", así que el detector se quedaba con la columna
-    equivocada y solo encontraba instalaciones cuyo NOMBRE mencionaba la
-    palabra, perdiendo las demás (p.ej. "Pista Atletismo Turia"). Ahora se
-    usa directamente la columna 'clase' confirmada, con un fallback de
-    detección solo si esa columna no existiera en el futuro.
+    Reutilizada por load_instalaciones_deportivas(), load_mercados() y
+    load_centros_salud() para no duplicar la lógica de carga/filtrado.
     """
     path = RAW_DIR / "equipamientos_municipales.geojson"
     if not path.exists():
@@ -167,10 +158,8 @@ def load_instalaciones_deportivas():
 
     if categoria_col is None:
         print(
-            "[AVISO] No se encontró una columna de categoría reconocible en "
-            "equipamientos_municipales.geojson (se esperaba 'clase'). "
-            "Revisa las propiedades del GeoJSON y ajusta "
-            "load_instalaciones_deportivas() en src/data_helpers.py."
+            f"[AVISO] No se encontró una columna de categoría reconocible en "
+            f"equipamientos_municipales.geojson para '{nombre_categoria_log}'."
         )
         return []
 
@@ -178,25 +167,54 @@ def load_instalaciones_deportivas():
     for feature in features:
         props = feature.get("properties", {})
         valor_categoria = str(props.get(categoria_col, ""))
-        if not any(kw in valor_categoria.lower() for kw in ["deport", "esport"]):
+        if not any(kw in valor_categoria.lower() for kw in keywords):
             continue
         geom = feature.get("geometry")
         if not geom or geom.get("type") != "Point":
             continue
         lon, lat = geom["coordinates"][:2]
-        nombre = props.get("equipamien") or props.get("nombre") or "Instalación deportiva"
+        nombre = props.get("equipamien") or props.get("nombre") or nombre_categoria_log
         points.append({"lat": lat, "lon": lon, "nombre": nombre})
 
+    return points
+
+
+def load_instalaciones_deportivas():
+    """
+    Carga instalaciones deportivas filtrando el GeoJSON de Equipamientos
+    Municipales por la columna 'clase' (valor real: "Instalaciones deportivas").
+
+    NOTA histórica: una versión anterior de esta función detectaba la
+    columna de categoría buscando automáticamente la palabra "deport" en
+    cualquier columna de texto. Esto tenía un bug: el nombre del propio
+    lugar (columna 'equipamien', p.ej. "Polideportivo Petxina") también
+    contiene "deport", así que el detector se quedaba con la columna
+    equivocada y solo encontraba instalaciones cuyo NOMBRE mencionaba la
+    palabra, perdiendo las demás (p.ej. "Pista Atletismo Turia"). Ahora se
+    usa directamente la columna 'clase' confirmada.
+    """
+    points = _load_equipamientos_categoria(["deport", "esport"], "Instalación deportiva")
     if not points:
         print(
             "[AVISO] No se encontraron instalaciones deportivas en "
-            "equipamientos_municipales.geojson usando la columna "
-            f"'{categoria_col}'. Revisa manualmente las propiedades del "
-            "GeoJSON y ajusta load_instalaciones_deportivas() en "
-            "src/data_helpers.py si el valor de categoría cambió."
+            "equipamientos_municipales.geojson. Revisa manualmente las "
+            "propiedades del GeoJSON y ajusta src/data_helpers.py si el "
+            "valor de categoría cambió."
         )
-
     return points
+
+
+def load_mercados():
+    """Carga mercados municipales (valor real confirmado: 'Mercados')."""
+    return _load_equipamientos_categoria(["mercat", "mercado"], "Mercado")
+
+
+def load_centros_salud():
+    """
+    Carga instalaciones sanitarias (valor real confirmado:
+    'Instalaciones sanitarias').
+    """
+    return _load_equipamientos_categoria(["sanitari", "sanitar"], "Centro de salud")
 
 
 @st.cache_data
