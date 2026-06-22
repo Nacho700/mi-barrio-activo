@@ -547,34 +547,33 @@ if "resultados" in st.session_state:
             valor_extra_html = ""
             if r.get("precio"):
                 value_score = r.get("value_score")
-                valor_extra_html = f"""
-                    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed rgba(43,38,32,0.12);">
-                        <span style="font-size:0.78rem; color:#7a6f60;">€{r['precio']:,.0f}</span>
-                        <span style="font-size:0.78rem; color:#7a6f60;">
-                            Value score: <strong style="color:#2F6E8C;">{value_score}</strong> IBUP pts / €100k
-                        </span>
-                    </div>
-                """
+                precio_fmt = f"{r['precio']:,.0f}"
+                valor_extra_html = (
+                    '<div style="display:flex; justify-content:space-between; '
+                    'align-items:baseline; margin-top:0.5rem; padding-top:0.5rem; '
+                    'border-top:1px dashed rgba(43,38,32,0.12);">'
+                    f'<span style="font-size:0.78rem; color:#7a6f60;">\u20ac{precio_fmt}</span>'
+                    '<span style="font-size:0.78rem; color:#7a6f60;">'
+                    f'Value score: <strong style="color:#2F6E8C;">{value_score}</strong> IBUP pts / \u20ac100k'
+                    '</span></div>'
+                )
 
-            st.markdown(
-                f"""
-                <div style="background:white; border:1px solid rgba(43,38,32,0.10);
-                            border-radius:12px; padding:0.9rem 1.1rem; margin-bottom:0.7rem;">
-                    <div style="display:flex; justify-content:space-between; align-items:baseline;">
-                        <span style="font-weight:600; font-size:0.92rem;">{r['direccion'][:48]}</span>
-                        <span style="font-family:'Fraunces',serif; font-weight:700; font-size:1.4rem; color:{color};">
-                            {f"{ibup_val:.0f}" if ibup_val is not None else "—"}<span style="font-size:0.85rem; color:#9a9088;">/100</span>
-                        </span>
-                    </div>
-                    <div style="background:rgba(43,38,32,0.07); border-radius:100px; height:6px; margin-top:0.5rem;">
-                        <div style="background:{color}; width:{pct}%; height:6px; border-radius:100px;"></div>
-                    </div>
-                    <div style="font-size:0.8rem; color:#7a6f60; margin-top:0.3rem;">{ibup_label(ibup_val)}</div>
-                    {valor_extra_html}
-                </div>
-                """,
-                unsafe_allow_html=True,
+            ibup_texto = f"{ibup_val:.0f}" if ibup_val is not None else "\u2014"
+            tarjeta_html = (
+                '<div style="background:white; border:1px solid rgba(43,38,32,0.10); '
+                'border-radius:12px; padding:0.9rem 1.1rem; margin-bottom:0.7rem;">'
+                '<div style="display:flex; justify-content:space-between; align-items:baseline;">'
+                f'<span style="font-weight:600; font-size:0.92rem;">{r["direccion"][:48]}</span>'
+                f'<span style="font-family:\'Fraunces\',serif; font-weight:700; font-size:1.4rem; color:{color};">'
+                f'{ibup_texto}<span style="font-size:0.85rem; color:#9a9088;">/100</span></span>'
+                '</div>'
+                f'<div style="background:rgba(43,38,32,0.07); border-radius:100px; height:6px; margin-top:0.5rem;">'
+                f'<div style="background:{color}; width:{pct}%; height:6px; border-radius:100px;"></div></div>'
+                f'<div style="font-size:0.8rem; color:#7a6f60; margin-top:0.3rem;">{ibup_label(ibup_val)}</div>'
+                f'{valor_extra_html}'
+                '</div>'
             )
+            st.markdown(tarjeta_html, unsafe_allow_html=True)
 
     precios_disponibles = [r for r in resultados if r.get("precio")]
     if len(precios_disponibles) >= 2:
