@@ -171,35 +171,35 @@ st.markdown(
 st.markdown(
     """
     <div class="hero-wrap">
-        <span class="hero-eyebrow">Open Data València · Proyecto UPV</span>
-        <p class="hero-title">Decide dónde vivir en Valencia<br>con datos, no solo con el precio</p>
+        <span class="hero-eyebrow">Open Data València · UPV Project</span>
+        <p class="hero-title">Decide where to live in Valencia<br>with data, not just price</p>
         <p class="hero-sub">
-            Cuando buscas piso miras precio y metros — pero casi nunca puedes saber
-            objetivamente cuánto ruido tendrás, cuánta contaminación vas a respirar,
-            o a cuántos minutos a pie está el parque o el polideportivo más cercano.
-            Esta herramienta lo calcula por ti con datos abiertos reales del
-            Ayuntamiento de València.
+            When you're looking for a flat you check price and square metres — but you
+            can almost never know objectively how much noise you'll get, how much
+            pollution you'll breathe, or how many minutes away on foot the nearest park
+            or sports centre is. This tool calculates it for you using real open data
+            from the Valencia City Council.
         </p>
         <div class="feature-row">
             <div class="feature-pill">
                 <span class="icon">🌬️</span>
-                <div class="label">Aire y ruido</div>
-                <div class="desc">Contaminación real + ruido estimado por tráfico</div>
+                <div class="label">Air and noise</div>
+                <div class="desc">Real pollution + noise estimated from traffic</div>
             </div>
             <div class="feature-pill">
                 <span class="icon">🌳</span>
-                <div class="label">Verde y deporte</div>
-                <div class="desc">Minutos reales a pie, no en línea recta</div>
+                <div class="label">Green space and sports</div>
+                <div class="desc">Real walking minutes, not straight-line distance</div>
             </div>
             <div class="feature-pill">
                 <span class="icon">🏷️</span>
-                <div class="label">Tipo de barrio</div>
-                <div class="desc">Clustering automático por similitud</div>
+                <div class="label">Neighbourhood type</div>
+                <div class="desc">Automatic clustering by similarity</div>
             </div>
             <div class="feature-pill">
                 <span class="icon">👤</span>
-                <div class="label">A tu medida</div>
-                <div class="desc">Perfiles que reponderan lo que te importa</div>
+                <div class="label">Tailored to you</div>
+                <div class="desc">Profiles that reweight what matters to you</div>
             </div>
         </div>
     </div>
@@ -207,31 +207,30 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-with st.expander("ℹ️ Metodología y fuentes de datos"):
+with st.expander("ℹ️ Methodology and data sources"):
     st.markdown(
         """
-**Fuentes de datos** (Open Data València, Ajuntament de València):
-- Estaciones de contaminación atmosférica (NO2, PM10, PM2.5) con valores actuales
-- Intensidad de tráfico por tramo de calle (usada para **estimar ruido**, ver más abajo)
-- Inventario de arbolado y zonas verdes (con fitness y superficie)
-- Itinerarios ciclistas (carril bici)
-- Equipamientos municipales (instalaciones deportivas, filtradas)
-- Red de calles peatonal: OpenStreetMap (vía OSMnx)
+**Data sources** (Open Data València, Ajuntament de València):
+- Air pollution monitoring stations (NO2, PM10, PM2.5) with current values
+- Traffic intensity per street segment (used to **estimate noise**, see below)
+- Tree and green space inventory (with fitness equipment and surface area)
+- Cycling routes (bike lanes)
+- Municipal facilities (sports facilities, filtered)
+- Pedestrian street network: OpenStreetMap (via OSMnx)
 
-**Métodos de Data Science aplicados:**
-1. **Interpolación espacial (IDW)** para estimar contaminación en cualquier punto.
-2. **Inferencia de ruido por proxy de tráfico**: el dataset oficial de ruido de
-   Valencia solo tiene 4 estaciones sin valores en dB accesibles. En su lugar,
-   se estima el ruido a partir de la intensidad de tráfico (IMV) en los tramos
-   de calle más cercanos, usando una relación logarítmica estándar en acústica
-   de tráfico (Lden ≈ A + B·log10(IMV)) con atenuación por distancia. Esto es
-   una **estimación**, no una medición certificada — se indica así en la app.
-3. **Grafo de calles real** (NetworkX/OSMnx) para tiempos a pie reales.
-4. **Índice compuesto ponderable**, con perfiles de usuario predefinidos
-   (familia, deportista, mayor) que repunderan automáticamente lo que más
-   importa a cada perfil.
+**Data Science methods applied:**
+1. **Spatial interpolation (IDW)** to estimate pollution at any point.
+2. **Noise inference via traffic proxy**: Valencia's official noise dataset only
+   has 4 stations with no accessible dB values. Instead, noise is estimated from
+   traffic intensity (IMV) at the nearest street segments, using a standard
+   logarithmic relationship in traffic acoustics (Lden ≈ A + B·log10(IMV)) with
+   distance attenuation. This is an **estimate**, not a certified measurement —
+   it is labelled as such throughout the app.
+3. **Real street graph** (NetworkX/OSMnx) for real walking times.
+4. **Weighted composite index**, with predefined user profiles (family, athlete,
+   older adult) that automatically reweight what matters most to each profile.
 
-Proyecto académico — UPV, Grado en Ciencia de Datos.
+Academic project — UPV, Data Science degree.
         """
     )
 
@@ -240,14 +239,14 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Selector de perfil de usuario
 # ---------------------------------------------------------------------------
-st.markdown("### 👤 ¿Qué tipo de persona eres?")
-st.caption("Esto repondera automáticamente el índice según lo que más te importa. Siempre puedes ajustarlo a mano después.")
+st.markdown("### 👤 What type of person are you?")
+st.caption("This automatically reweights the index based on what matters most to you. You can always adjust it manually afterwards.")
 
 perfil_keys = list(PERFILES_USUARIO.keys())
 perfil_labels = [PERFILES_USUARIO[k]["nombre"] for k in perfil_keys]
 
 perfil_idx = st.radio(
-    "Perfil",
+    "Profile",
     options=range(len(perfil_keys)),
     format_func=lambda i: perfil_labels[i],
     horizontal=True,
@@ -260,16 +259,16 @@ st.caption(f"💡 {PERFILES_USUARIO[perfil_seleccionado]['descripcion']}")
 if perfil_seleccionado != "personalizado":
     pesos_perfil = PERFILES_USUARIO[perfil_seleccionado]["weights"]
     nombres_componentes_pesos = {
-        "no2": "NO2", "pm10": "PM10", "pm25": "PM2.5", "ruido_db": "Ruido",
-        "tiempo_deporte_min": "Deporte", "tiempo_bici_min": "Carril bici",
-        "tiempo_verde_min": "Zona verde", "tiempo_transporte_min": "Transporte",
+        "no2": "NO2", "pm10": "PM10", "pm25": "PM2.5", "ruido_db": "Noise",
+        "tiempo_deporte_min": "Sports", "tiempo_bici_min": "Bike lane",
+        "tiempo_verde_min": "Green space", "tiempo_transporte_min": "Transport",
     }
     paleta_componentes_pesos = {
         "no2": "#C65D3B", "pm10": "#D98C6F", "pm25": "#E8B4A0", "ruido_db": "#8C4A3A",
         "tiempo_deporte_min": "#3D6B4F", "tiempo_bici_min": "#6B9C7A",
         "tiempo_verde_min": "#A8C9AE", "tiempo_transporte_min": "#2F6E8C",
     }
-    with st.expander("📐 Ver cómo reparte la importancia este perfil"):
+    with st.expander("📐 See how this profile distributes importance"):
         fig_pesos = go.Figure(
             data=[
                 go.Pie(
@@ -293,36 +292,36 @@ if perfil_seleccionado != "personalizado":
 # ---------------------------------------------------------------------------
 # Inputs de direcciones
 # ---------------------------------------------------------------------------
-st.markdown("### 📍 Direcciones a comparar")
-n_direcciones = st.slider("¿Cuántas direcciones quieres comparar?", 1, 3, 2)
+st.markdown("### 📍 Addresses to compare")
+n_direcciones = st.slider("How many addresses do you want to compare?", 1, 3, 2)
 
 direcciones_input = []
 cols = st.columns(n_direcciones)
 for i, col in enumerate(cols):
     with col:
-        addr = st.text_input(f"Dirección {i+1}", key=f"addr_{i}", placeholder="Calle, número, Valencia")
+        addr = st.text_input(f"Address {i+1}", key=f"addr_{i}", placeholder="Street, number, Valencia")
         direcciones_input.append(addr)
 
 # ---------------------------------------------------------------------------
 # Pesos: predefinidos por perfil, o sliders si el perfil es "personalizado"
 # ---------------------------------------------------------------------------
 if perfil_seleccionado == "personalizado":
-    st.markdown("##### 🎛️ Ajusta qué te importa más")
+    st.markdown("##### 🎛️ Adjust what matters most to you")
     w_cols = st.columns(7)
     with w_cols[0]:
         w_no2 = st.slider("NO2", 0, 100, 17, key="w_no2")
     with w_cols[1]:
         w_pm10 = st.slider("PM10", 0, 100, 10, key="w_pm10")
     with w_cols[2]:
-        w_ruido = st.slider("Ruido", 0, 100, 18, key="w_ruido")
+        w_ruido = st.slider("Noise", 0, 100, 18, key="w_ruido")
     with w_cols[3]:
-        w_deporte = st.slider("Deporte", 0, 100, 15, key="w_deporte")
+        w_deporte = st.slider("Sports", 0, 100, 15, key="w_deporte")
     with w_cols[4]:
-        w_bici = st.slider("Carril bici", 0, 100, 7, key="w_bici")
+        w_bici = st.slider("Bike lane", 0, 100, 7, key="w_bici")
     with w_cols[5]:
-        w_verde = st.slider("Zonas verdes", 0, 100, 12, key="w_verde")
+        w_verde = st.slider("Green space", 0, 100, 12, key="w_verde")
     with w_cols[6]:
-        w_transporte = st.slider("Transporte público", 0, 100, 14, key="w_transporte")
+        w_transporte = st.slider("Public transport", 0, 100, 14, key="w_transporte")
 
     weights = {
         "no2": w_no2,
@@ -337,7 +336,7 @@ if perfil_seleccionado == "personalizado":
 else:
     weights = PERFILES_USUARIO[perfil_seleccionado]["weights"]
 
-ejecutar = st.button("🔍 Calcular y comparar", type="primary")
+ejecutar = st.button("🔍 Calculate and compare", type="primary")
 
 # ---------------------------------------------------------------------------
 # Cálculo
@@ -350,10 +349,10 @@ ejecutar = st.button("🔍 Calcular y comparar", type="primary")
 if ejecutar:
     direcciones_validas = [d for d in direcciones_input if d.strip()]
     if not direcciones_validas:
-        st.warning("Introduce al menos una dirección.")
+        st.warning("Enter at least one address.")
         st.stop()
 
-    with st.spinner("Cargando capas de datos..."):
+    with st.spinner("Loading data layers..."):
         stations_with_values = load_estaciones_contaminacion()
         carril_bici_points = load_geojson_points("carril_bici.geojson")
         verde_points = load_geojson_points(
@@ -376,8 +375,8 @@ if ejecutar:
 
     if stations_with_values.empty:
         st.error(
-            "No se han encontrado datos de estaciones de contaminación. "
-            "Ejecuta `python src/data_loader.py --download-all` primero."
+            "No air pollution monitoring station data found. "
+            "Run `python src/data_loader.py --download-all` first."
         )
         st.stop()
 
@@ -388,15 +387,15 @@ if ejecutar:
             geo = geocode_address(direccion)
         except GeocodingServiceError:
             st.error(
-                f"⚠️ El servicio de geocodificación (Nominatim/OpenStreetMap) no respondió "
-                f"al buscar '{direccion}'. **Esto no significa que la dirección esté mal "
-                f"escrita** — es un servicio externo gratuito que a veces se satura. "
-                f"Espera unos segundos y vuelve a intentarlo.",
+                f"⚠️ The geocoding service (Nominatim/OpenStreetMap) did not respond "
+                f"while searching for '{direccion}'. **This does not mean the address "
+                f"is misspelled** — it's a free external service that sometimes gets "
+                f"overloaded. Wait a few seconds and try again.",
                 icon="⚠️",
             )
             continue
         if geo is None:
-            st.warning(f"No se pudo localizar: '{direccion}'. Prueba a ser más específico.")
+            st.warning(f"Could not locate: '{direccion}'. Try being more specific.")
             continue
 
         lat, lon = geo["lat"], geo["lon"]
@@ -482,13 +481,13 @@ if "resultados" in st.session_state:
         <div style="background:linear-gradient(135deg, #F2E9D8 0%, #FBF6EE 100%);
                     border-radius:16px; padding:1.6rem 1.8rem; margin-bottom:1.2rem;
                     border:1px solid rgba(43,38,32,0.08);">
-            <span class="hero-eyebrow">Análisis completado</span>
+            <span class="hero-eyebrow">Analysis complete</span>
             <p style="font-family:'Fraunces',serif; font-weight:700; font-size:1.7rem;
                       color:#2B2620; margin:0.3rem 0 0.2rem 0;">
-                📊 Resultados del análisis
+                📊 Analysis results
             </p>
             <p style="color:#7a6f60; margin:0; font-size:0.95rem;">
-                Perfil aplicado: <strong>{st.session_state.get('perfil_usado', '')}</strong>
+                Profile applied: <strong>{st.session_state.get('perfil_usado', '')}</strong>
             </p>
         </div>
         """,
@@ -542,10 +541,10 @@ if "resultados" in st.session_state:
     # --- Mapa de tipos de barrio (clusters) ------------------------------
     cluster_grid_mapa = load_cluster_grid()
     if not cluster_grid_mapa.empty and "cluster" in cluster_grid_mapa.columns:
-        st.markdown("##### 🗺️ Mapa de tipos de barrio en Valencia")
+        st.markdown("##### 🗺️ Neighbourhood type map of Valencia")
         st.caption(
-            "Cada punto representa una celda de la cuadrícula de análisis, coloreada según "
-            "el tipo de zona (clustering K-means). Tus direcciones se marcan con un pin."
+            "Each point represents a grid cell from the analysis, coloured by "
+            "neighbourhood type (K-means clustering). Your addresses are marked with a pin."
         )
 
         # Paleta consistente con CLUSTER_LABELS — colores con buen contraste
@@ -594,9 +593,9 @@ if "resultados" in st.session_state:
         st.markdown(leyenda_html, unsafe_allow_html=True)
 
     # --- Radar comparativo ----------------------------------------------
-    st.markdown("##### 📊 Comparativa visual")
+    st.markdown("##### 📊 Visual comparison")
     categorias = ["no2", "pm10", "ruido_db", "tiempo_deporte_min", "tiempo_bici_min", "tiempo_verde_min", "tiempo_transporte_min"]
-    categorias_labels = ["NO2", "PM10", "Ruido (estimado)", "Acceso deporte", "Acceso bici", "Acceso verde", "Transporte público"]
+    categorias_labels = ["NO2", "PM10", "Noise (estimated)", "Sports access", "Bike lane access", "Green space access", "Public transport"]
     paleta_radar = ["#C65D3B", "#3D6B4F", "#2F6E8C"]
 
     fig = go.Figure()
@@ -617,24 +616,24 @@ if "resultados" in st.session_state:
         ),
         paper_bgcolor="rgba(0,0,0,0)",
         showlegend=True,
-        title=dict(text="0 = peor, 100 = mejor", font=dict(family="Inter", size=13, color="#7a6f60")),
+        title=dict(text="0 = worst, 100 = best", font=dict(family="Inter", size=13, color="#7a6f60")),
         font=dict(family="Inter"),
         height=420,
     )
     st.plotly_chart(fig, width="stretch")
 
     # --- Barras apiladas: contribución de cada componente al IBUP --------
-    st.markdown("##### 🧱 ¿Qué pesa más en cada IBUP?")
+    st.markdown("##### 🧱 What weighs most in each IBUP?")
     st.caption(
-        "Cada barra suma el IBUP total. Los segmentos muestran cuánto aporta cada "
-        "componente, combinando su score (0-100) con el peso que le da tu perfil — "
-        "así se ve no solo el resultado final, sino qué lo está empujando."
+        "Each bar adds up to the total IBUP. The segments show how much each "
+        "component contributes, combining its score (0-100) with the weight your "
+        "profile gives it — so you see not just the final result, but what's driving it."
     )
 
     nombres_componentes = {
-        "no2": "NO2", "pm10": "PM10", "pm25": "PM2.5", "ruido_db": "Ruido",
-        "tiempo_deporte_min": "Deporte", "tiempo_bici_min": "Carril bici",
-        "tiempo_verde_min": "Zona verde", "tiempo_transporte_min": "Transporte",
+        "no2": "NO2", "pm10": "PM10", "pm25": "PM2.5", "ruido_db": "Noise",
+        "tiempo_deporte_min": "Sports", "tiempo_bici_min": "Bike lane",
+        "tiempo_verde_min": "Green space", "tiempo_transporte_min": "Transport",
     }
     paleta_componentes = {
         "no2": "#C65D3B", "pm10": "#D98C6F", "pm25": "#E8B4A0", "ruido_db": "#8C4A3A",
@@ -671,7 +670,7 @@ if "resultados" in st.session_state:
                 textposition="inside",
                 textfont=dict(color="white", size=11, family="Inter"),
                 marker_color=paleta_componentes.get(comp_key, "#9a9088"),
-                hovertemplate=f"{comp_nombre}: %{{y:.1f}} puntos<extra></extra>",
+                hovertemplate=f"{comp_nombre}: %{{y:.1f}} points<extra></extra>",
             )
         )
 
@@ -681,15 +680,15 @@ if "resultados" in st.session_state:
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Inter"),
-        yaxis=dict(title="IBUP (puntos aportados)", gridcolor="rgba(43,38,32,0.08)"),
+        yaxis=dict(title="IBUP (points contributed)", gridcolor="rgba(43,38,32,0.08)"),
         legend=dict(orientation="h", yanchor="bottom", y=-0.3),
         uniformtext=dict(minsize=9, mode="hide"),
     )
     st.plotly_chart(fig_barras, width="stretch")
-    st.caption("Los porcentajes dentro de cada segmento indican qué parte del IBUP total de esa dirección aporta ese componente.")
+    st.caption("The percentages inside each segment show what share of that address's total IBUP comes from that component.")
 
     # --- Contexto detallado por dirección --------------------------------
-    st.markdown("##### 🔎 Contexto detallado por dirección")
+    st.markdown("##### 🔎 Detailed context by address")
     city_averages = st.session_state.get("city_averages", {})
     for r in resultados:
         with st.container(border=True):
@@ -711,39 +710,39 @@ if "resultados" in st.session_state:
 
             col_a, col_b, col_c, col_d = st.columns(4)
             with col_a:
-                st.markdown("**Calidad del aire**")
+                st.markdown("**Air quality**")
                 if info_est:
-                    st.markdown(f"🟢 {info_est['calidad_aire'] or 'Sin dato'}")
-                    st.caption(f"Estación {info_est['nombre']}, a {info_est['distancia_m']:.0f} m")
+                    st.markdown(f"🟢 {info_est['calidad_aire'] or 'No data'}")
+                    st.caption(f"Station {info_est['nombre']}, {info_est['distancia_m']:.0f} m away")
                     no2_val = r["raw"].get("no2")
                     media_no2 = city_averages.get("no2")
                     if no2_val is not None and media_no2 is not None:
                         diff = no2_val - media_no2
-                        comparacion = "por debajo de" if diff < 0 else "por encima de"
-                        st.caption(f"NO2: {no2_val:.0f} µg/m³ — {abs(diff):.0f} {comparacion} la media de Valencia ({media_no2:.0f})")
+                        comparacion = "below" if diff < 0 else "above"
+                        st.caption(f"NO2: {no2_val:.0f} µg/m³ — {abs(diff):.0f} {comparacion} Valencia's average ({media_no2:.0f})")
                 else:
-                    st.caption("Sin dato")
+                    st.caption("No data")
             with col_b:
-                st.markdown("**Tipo de emisión**")
-                st.markdown(f"🏭 {info_est['tipo_emision'] if info_est else 'Sin dato'}")
+                st.markdown("**Emission type**")
+                st.markdown(f"🏭 {info_est['tipo_emision'] if info_est else 'No data'}")
             with col_c:
-                st.markdown("**Tipo de zona**")
-                st.markdown(f"🏙️ {info_est['tipo_zona'] if info_est else 'Sin dato'}")
+                st.markdown("**Zone type**")
+                st.markdown(f"🏙️ {info_est['tipo_zona'] if info_est else 'No data'}")
             with col_d:
-                st.markdown("**Ruido estimado**")
+                st.markdown("**Estimated noise**")
                 if ruido_info:
                     st.markdown(f"🔊 {ruido_info['ruido_db']:.0f} dB(A)")
-                    st.caption(f"Cerca de: {ruido_info['tramo_nombre']}")
+                    st.caption(f"Near: {ruido_info['tramo_nombre']}")
                 else:
-                    st.caption("Sin dato")
+                    st.caption("No data")
 
             zona_verde = r.get("zona_verde_detalle")
             if zona_verde:
                 st.markdown("---")
                 nombre_zona = zona_verde["nombre"]
                 if not _es_valido(nombre_zona) or str(nombre_zona).lower() == "sin nombre":
-                    nombre_zona = "Árbol o zona verde sin nombre registrado"
-                st.markdown(f"**🌳 Zona verde más cercana**: {nombre_zona} ({zona_verde['minutos']} min a pie)")
+                    nombre_zona = "Unnamed tree or green space"
+                st.markdown(f"**🌳 Nearest green space**: {nombre_zona} ({zona_verde['minutos']} min on foot)")
 
                 extra = zona_verde.get("extra", {})
                 tipologia = extra.get("tipologia")
@@ -752,12 +751,12 @@ if "resultados" in st.session_state:
 
                 detalles = []
                 if _es_valido(tipologia):
-                    detalles.append(f"Tipo: {tipologia}")
+                    detalles.append(f"Type: {tipologia}")
                 if _es_valido(fitness) and float(fitness) > 0:
-                    detalles.append(f"🏋️ {int(float(fitness))} elementos de fitness al aire libre")
+                    detalles.append(f"🏋️ {int(float(fitness))} outdoor fitness elements")
                 if _es_valido(superficie):
                     try:
-                        detalles.append(f"📐 {float(superficie):,.0f} m² de superficie")
+                        detalles.append(f"📐 {float(superficie):,.0f} m² of surface area")
                     except (ValueError, TypeError):
                         pass
 
@@ -765,8 +764,8 @@ if "resultados" in st.session_state:
                     st.markdown(" · ".join(detalles))
                 else:
                     st.caption(
-                        "Este punto verde más cercano es un árbol individual del "
-                        "inventario de arbolado, sin ficha de zona verde asociada."
+                        "This nearest green point is an individual tree from the "
+                        "tree inventory, with no associated green space record."
                     )
 
             # --- Qué hay a 15 minutos andando -----------------------------
@@ -775,9 +774,9 @@ if "resultados" in st.session_state:
             if conteo_verde or conteo_deporte:
                 st.markdown("---")
                 st.markdown(
-                    f"**🚶 A menos de 15 min a pie**: "
-                    f"{conteo_verde['conteo'] if conteo_verde else 0} zonas verdes/árboles, "
-                    f"{conteo_deporte['conteo'] if conteo_deporte else 0} instalaciones deportivas"
+                    f"**🚶 Within 15 min on foot**: "
+                    f"{conteo_verde['conteo'] if conteo_verde else 0} green spaces/trees, "
+                    f"{conteo_deporte['conteo'] if conteo_deporte else 0} sports facilities"
                 )
 
             # --- Transporte público ---------------------------------------
@@ -789,24 +788,24 @@ if "resultados" in st.session_state:
 
                 lineas = extra_transporte.get("lineas") or extra_transporte.get("linea")
                 if _es_valido(lineas):
-                    detalle_extra.append(f"Líneas: {lineas}")
+                    detalle_extra.append(f"Lines: {lineas}")
 
                 bicis = extra_transporte.get("bicis_disponibles")
                 huecos = extra_transporte.get("huecos_libres")
                 if _es_valido(bicis) and _es_valido(huecos):
-                    detalle_extra.append(f"🚲 {int(float(bicis))} bicis disponibles ahora, {int(float(huecos))} huecos libres")
+                    detalle_extra.append(f"🚲 {int(float(bicis))} bikes available now, {int(float(huecos))} free slots")
 
                 texto_extra = " · " + " · ".join(detalle_extra) if detalle_extra else ""
                 st.markdown(
-                    f"**🚌 Transporte público más cercano**: {transporte_cercano['nombre']} "
-                    f"({transporte_cercano['minutos']} min a pie){texto_extra}"
+                    f"**🚌 Nearest public transport**: {transporte_cercano['nombre']} "
+                    f"({transporte_cercano['minutos']} min on foot){texto_extra}"
                 )
 
             # --- Top 5 ---------------------------------------------------
             st.markdown("---")
             key_top5 = f"top5_{r['direccion'][:20]}_{r['lat']}_{r['lon']}"
-            if st.button("🏆 Ver Top 5 de zonas verdes, deporte, mercados y centros de salud cercanos", key=f"btn_{key_top5}"):
-                with st.spinner("Calculando rankings..."):
+            if st.button("🏆 View Top 5 nearby green spaces, sports, markets and health centres", key=f"btn_{key_top5}"):
+                with st.spinner("Calculating rankings..."):
                     verde_points_top5 = load_geojson_points(
                         "zonas_verdes.geojson",
                         extra_props=["n_elementos_fitness", "sup_total", "tipologia"],
@@ -830,48 +829,48 @@ if "resultados" in st.session_state:
                 top5_data = st.session_state[key_top5]
                 col_top_verde, col_top_deporte, col_top_mercados, col_top_salud = st.columns(4)
                 with col_top_verde:
-                    st.markdown("**🌳 Zonas verdes**")
+                    st.markdown("**🌳 Green spaces**")
                     if top5_data["verde"]:
                         for i, z in enumerate(top5_data["verde"], 1):
-                            nombre_z = z["nombre"] if _es_valido(z["nombre"]) and str(z["nombre"]).lower() != "sin nombre" else "Árbol/zona sin nombre"
+                            nombre_z = z["nombre"] if _es_valido(z["nombre"]) and str(z["nombre"]).lower() != "sin nombre" else "Unnamed tree/space"
                             st.markdown(f"{i}. {nombre_z} — {z['minutos']} min")
                     else:
-                        st.caption("Sin datos.")
+                        st.caption("No data.")
                 with col_top_deporte:
-                    st.markdown("**🏋️ Deporte**")
+                    st.markdown("**🏋️ Sports**")
                     if top5_data["deporte"]:
                         for i, d in enumerate(top5_data["deporte"], 1):
                             st.markdown(f"{i}. {d['nombre']} — {d['minutos']} min")
                     else:
-                        st.caption("Sin datos.")
+                        st.caption("No data.")
                 with col_top_mercados:
-                    st.markdown("**🛒 Mercados**")
+                    st.markdown("**🛒 Markets**")
                     if top5_data["mercados"]:
                         for i, m in enumerate(top5_data["mercados"], 1):
                             st.markdown(f"{i}. {m['nombre']} — {m['minutos']} min")
                     else:
-                        st.caption("Sin datos.")
+                        st.caption("No data.")
                 with col_top_salud:
-                    st.markdown("**🏥 Centros de salud**")
+                    st.markdown("**🏥 Health centres**")
                     if top5_data["salud"]:
                         for i, s in enumerate(top5_data["salud"], 1):
                             st.markdown(f"{i}. {s['nombre']} — {s['minutos']} min")
                     else:
-                        st.caption("Sin datos disponibles.")
+                        st.caption("No data available.")
 
     # --- Ranking narrativo automático --------------------------------------
     if len(resultados) >= 2:
-        st.markdown("##### 🏅 ¿Cuál gana en qué?")
+        st.markdown("##### 🏅 Which one wins where?")
 
         COMPONENTE_NOMBRES = {
-            "no2": "aire (NO2)",
-            "pm10": "aire (PM10)",
-            "pm25": "aire (PM2.5)",
-            "ruido_db": "tranquilidad",
-            "tiempo_deporte_min": "acceso a deporte",
-            "tiempo_bici_min": "acceso a carril bici",
-            "tiempo_verde_min": "acceso a zonas verdes",
-            "tiempo_transporte_min": "transporte público",
+            "no2": "air quality (NO2)",
+            "pm10": "air quality (PM10)",
+            "pm25": "air quality (PM2.5)",
+            "ruido_db": "quietness",
+            "tiempo_deporte_min": "sports access",
+            "tiempo_bici_min": "bike lane access",
+            "tiempo_verde_min": "green space access",
+            "tiempo_transporte_min": "public transport",
         }
 
         # Comparamos cada par de direcciones componente a componente, usando
@@ -904,77 +903,77 @@ if "resultados" in st.session_state:
                 with st.container(border=True):
                     col_izq, col_der = st.columns(2)
                     with col_izq:
-                        st.markdown(f"**📍 {nombre1}** gana en:")
+                        st.markdown(f"**📍 {nombre1}** wins on:")
                         if gana_r1:
                             st.markdown(" · ".join(f"`{c}`" for c in gana_r1))
                         else:
-                            st.caption("Sin ventajas claras")
+                            st.caption("No clear advantages")
                     with col_der:
-                        st.markdown(f"**📍 {nombre2}** gana en:")
+                        st.markdown(f"**📍 {nombre2}** wins on:")
                         if gana_r2:
                             st.markdown(" · ".join(f"`{c}`" for c in gana_r2))
                         else:
-                            st.caption("Sin ventajas claras")
+                            st.caption("No clear advantages")
 
     # --- Validación del modelo --------------------------------------------
-    st.markdown("##### 🔬 Validación del modelo")
-    with st.expander("¿Cómo sabemos que estos cálculos son razonables, no inventados?"):
+    st.markdown("##### 🔬 Model validation")
+    with st.expander("How do we know these calculations are reasonable, not made up?"):
         validacion = validate_cluster_grid()
         if validacion:
             col_v1, col_v2, col_v3 = st.columns(3)
             with col_v1:
-                st.metric("Coeficiente de silueta", f"{validacion['silhouette_score']:.2f}")
-                st.caption("Mide cuán bien separados están los 4 tipos de barrio (rango -1 a +1; >0.25 ya es razonable en datos urbanos reales, no sintéticos)")
+                st.metric("Silhouette coefficient", f"{validacion['silhouette_score']:.2f}")
+                st.caption("Measures how well separated the 4 neighbourhood types are (range -1 to +1; >0.25 is already reasonable for real urban data, not synthetic)")
             with col_v2:
-                st.metric("Puntos del grid analizados", validacion["n_puntos"])
-                st.caption("Cuadrícula de ~400 puntos sobre todo el término municipal de Valencia")
+                st.metric("Grid points analysed", validacion["n_puntos"])
+                st.caption("~400-point grid covering the whole municipality of Valencia")
             with col_v3:
-                st.metric("Tipos de barrio (k)", validacion["n_clusters"])
-                st.caption("Elegido con el método del codo sobre la inercia de K-means")
+                st.metric("Neighbourhood types (k)", validacion["n_clusters"])
+                st.caption("Chosen with the elbow method on K-means inertia")
         else:
-            st.caption("Validación del clustering no disponible (genera primero `barrios_clusters.geojson`).")
+            st.caption("Clustering validation not available (generate `barrios_clusters.geojson` first).")
 
         st.markdown(
             """
 ---
-**Interpolación de contaminación (IDW)**: el NO2/PM10/PM2.5 en cualquier punto se estima
-ponderando el valor de las estaciones reales cercanas por el inverso de su distancia
-al cuadrado — un método estándar en geoestadística cuando hay pocos puntos de medición
-(~11 estaciones en Valencia) y se necesita estimar en zonas sin sensor.
+**Pollution interpolation (IDW)**: NO2/PM10/PM2.5 at any point is estimated by
+weighting nearby real stations by the inverse square of their distance — a
+standard method in geostatistics when there are few measurement points
+(~11 stations in Valencia) and estimates are needed in areas without a sensor.
 
-**Ruido estimado por tráfico**: el dataset oficial de ruido de Valencia solo tiene 4
-estaciones sin valores en dB descargables. En su lugar, se infiere el ruido a partir
-de la intensidad de tráfico (IMV) en los tramos de calle más cercanos, con una relación
-logarítmica estándar en acústica de tráfico (más vehículos/día → más dB) y atenuación
-por distancia. Es una **estimación**, no una medición certificada — por eso se etiqueta
-siempre como "ruido estimado" en la interfaz, nunca como dato medido.
+**Traffic-based noise estimate**: Valencia's official noise dataset only has 4
+stations with no downloadable dB values. Instead, noise is inferred from
+traffic intensity (IMV) at the nearest street segments, using a standard
+logarithmic relationship in traffic acoustics (more vehicles/day → more dB)
+with distance attenuation. It is an **estimate**, not a certified measurement —
+that's why it's always labelled "estimated noise" in the interface.
 
-**Accesibilidad real**: los tiempos a pie no son distancia en línea recta — se calculan
-sobre el grafo real de calles de Valencia (OpenStreetMap), encontrando la ruta peatonal
-más corta de verdad entre el punto y cada instalación.
+**Real accessibility**: walking times are not straight-line distances — they
+are calculated on Valencia's real street graph (OpenStreetMap), finding the
+actual shortest pedestrian route between the point and each facility.
             """
         )
 
     # --- Tabla de valores crudos ------------------------------------------
-    with st.expander("📐 Ver valores numéricos sin normalizar"):
+    with st.expander("📐 View raw (non-normalised) numbers"):
         tabla = pd.DataFrame([r["raw"] for r in resultados], index=[r["direccion"][:30] for r in resultados])
         st.dataframe(tabla)
 
     # --- Exportar a PDF ----------------------------------------------------
-    st.markdown("##### 📄 Llevarte el análisis")
-    if st.button("Generar informe PDF descargable"):
-        with st.spinner("Generando PDF..."):
+    st.markdown("##### 📄 Take the analysis with you")
+    if st.button("Generate downloadable PDF report"):
+        with st.spinner("Generating PDF..."):
             pdf_path = generar_informe_comparativo(
                 resultados, st.session_state.get("perfil_usado", "")
             )
             with open(pdf_path, "rb") as f:
                 st.session_state["pdf_bytes"] = f.read()
             st.session_state["pdf_name"] = pdf_path.name
-        st.success("Informe generado.")
+        st.success("Report generated.")
 
     if "pdf_bytes" in st.session_state:
         st.download_button(
-            "⬇️ Descargar informe PDF",
+            "⬇️ Download PDF report",
             data=st.session_state["pdf_bytes"],
             file_name=st.session_state["pdf_name"],
             mime="application/pdf",
