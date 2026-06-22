@@ -50,13 +50,13 @@ DEFAULT_WEIGHTS = {
 # ---------------------------------------------------------------------------
 PERFILES_USUARIO = {
     "equilibrado": {
-        "nombre": "⚖️ Equilibrado",
-        "descripcion": "Un poco de todo, sin priorizar nada en especial.",
+        "nombre": "⚖️ Balanced",
+        "descripcion": "A bit of everything, with no special priority.",
         "weights": DEFAULT_WEIGHTS,
     },
     "familia_ninos": {
-        "nombre": "👨‍👩‍👧 Familia con niños",
-        "descripcion": "Prioriza aire limpio, poco ruido y zonas verdes para jugar.",
+        "nombre": "👨‍👩‍👧 Family with children",
+        "descripcion": "Prioritises clean air, low noise, and green spaces to play in.",
         "weights": {
             "no2": 0.19, "pm10": 0.12, "pm25": 0.10, "ruido_db": 0.19,
             "tiempo_deporte_min": 0.07, "tiempo_bici_min": 0.03, "tiempo_verde_min": 0.16,
@@ -64,8 +64,8 @@ PERFILES_USUARIO = {
         },
     },
     "deportista": {
-        "nombre": "🏃 Deportista",
-        "descripcion": "Prioriza acceso rápido a instalaciones deportivas, carril bici y zonas verdes para entrenar.",
+        "nombre": "🏃 Athlete",
+        "descripcion": "Prioritises quick access to sports facilities, bike lanes, and green spaces to train.",
         "weights": {
             "no2": 0.13, "pm10": 0.09, "pm25": 0.07, "ruido_db": 0.06,
             "tiempo_deporte_min": 0.26, "tiempo_bici_min": 0.16, "tiempo_verde_min": 0.11,
@@ -73,8 +73,8 @@ PERFILES_USUARIO = {
         },
     },
     "mayor": {
-        "nombre": "🧓 Persona mayor",
-        "descripcion": "Prioriza tranquilidad (poco ruido) y aire limpio por encima de la accesibilidad deportiva.",
+        "nombre": "🧓 Older adult",
+        "descripcion": "Prioritises quiet (low noise) and clean air over sports accessibility.",
         "weights": {
             "no2": 0.20, "pm10": 0.13, "pm25": 0.10, "ruido_db": 0.23,
             "tiempo_deporte_min": 0.04, "tiempo_bici_min": 0.02, "tiempo_verde_min": 0.13,
@@ -82,8 +82,8 @@ PERFILES_USUARIO = {
         },
     },
     "personalizado": {
-        "nombre": "🎛️ Personalizado",
-        "descripcion": "Ajusta tú mismo cada peso con los sliders.",
+        "nombre": "🎛️ Custom",
+        "descripcion": "Adjust each weight yourself with the sliders.",
         "weights": None,  # se rellena con los sliders del usuario
     },
 }
@@ -171,13 +171,13 @@ def compute_ibup(raw_values: dict, weights: dict = None) -> dict:
 def ibup_label(ibup_value: float) -> str:
     """Traduce el score numérico a una etiqueta interpretable."""
     if ibup_value is None:
-        return "Sin datos suficientes"
+        return "Not enough data"
     if ibup_value >= 80:
-        return "Excelente"
+        return "Excellent"
     if ibup_value >= 60:
-        return "Bueno"
+        return "Good"
     if ibup_value >= 40:
-        return "Regular"
+        return "Fair"
     if ibup_value >= 20:
-        return "Deficiente"
-    return "Muy deficiente"
+        return "Poor"
+    return "Very poor"
