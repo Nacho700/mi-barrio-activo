@@ -2,29 +2,32 @@
 src/geocoding.py
 =================
 Convierte una dirección escrita por el usuario ("Calle San Vicente 100,
-Valencia") en coordenadas (lat, lon) usando Nominatim (OpenStreetMap),
-que es gratuito y no requiere API key.
+Valencia") en coordenadas (lat, lon).
 
-IMPORTANTE sobre fiabilidad: Nominatim es un servicio gratuito con límites
-de uso (máx. ~1 petición/segundo, y puede bloquear temporalmente si detecta
-uso intensivo desde una IP compartida, como las de Streamlit Cloud). Si
-Nominatim falla (timeout, bloqueo, error de servicio), este módulo NO debe
-devolver "dirección no encontrada" — eso confundiría al usuario haciéndole
-pensar que escribió mal la dirección cuando en realidad el servicio externo
-falló. Por eso se distingue explícitamente entre:
-  - GeocodingNotFoundError: la dirección no existe / no se pudo interpretar
-  - GeocodingServiceError: el servicio de geocodificación falló (reintentar)
+HISTORIAL — por qué se usa ArcGIS y no solo Nominatim:
+Nominatim (el geocodificador gratuito de OpenStreetMap) aplica bloqueos
+agresivos por IP a tráfico que detecta como "uso intensivo", y esto
+incluye IPs compartidas como las de Streamlit Community Cloud — se
+confirmó en producción que Nominatim devolvía error 403 (Forbidden) de
+forma consistente, no por límite de 1 req/segundo sino por bloqueo
+directo de la IP de origen. Por eso el geocodificador principal aquí es
+ArcGIS (Esri), que tiene un nivel gratuito sin API key vía geopy y mayor
+tolerancia a IPs compartidas. Nominatim se mantiene como fallback por si
+ArcGIS fallara en algún momento.
 """
 
 import time
 
-from geopy.geocoders import Nominatim
+from geopy.geocoders import ArcGIS, Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError, GeocoderUnavailable
 
-_geolocator = Nominatim(
+_geolocator_principal = ArcGIS(timeout=10)
+_geolocator_fallback = Nominatim(
     user_agent="MiBarrioActivoYSano-ProyectoUPV-DataScience/1.0",
     timeout=10,
 )
+
+_ERRORES_RECUPERABLES = (GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError)
 
 
 class GeocodingServiceError(Exception):
@@ -32,41 +35,65 @@ class GeocodingServiceError(Exception):
     pass
 
 
-def geocode_address(address: str, city_hint="Valencia, España", max_retries=3):
+def _intentar_geocodificar(geolocator, query, max_retries=2):
     """
-    Devuelve {"lat": .., "lon": .., "direccion_completa": ..} si encuentra
-    la dirección, o None si Nominatim respondió pero no encontró nada.
-
-    Lanza GeocodingServiceError si el servicio falla repetidamente tras
-    max_retries intentos (esto NO significa que la dirección esté mal
-    escrita — significa que Nominatim no respondió correctamente).
+    Intenta geocodificar con un geolocator dado. Devuelve la Location si
+    tiene éxito, None si el servicio respondió pero no encontró nada, o
+    lanza una excepción si el servicio falló tras los reintentos.
     """
-    query = address if "valencia" in address.lower() else f"{address}, {city_hint}"
-
     last_error = None
     for intento in range(max_retries):
         try:
-            location = _geolocator.geocode(query)
-            if location is None:
-                return None  # Nominatim respondió OK, pero no encontró la dirección
+            return geolocator.geocode(query)
+        except _ERRORES_RECUPERABLES as e:
+            last_error = e
+            time.sleep(1.0 * (intento + 1))
+        except Exception as e:
+            last_error = e
+            time.sleep(1.0 * (intento + 1))
+    raise GeocodingServiceError(str(last_error))
+
+
+def geocode_address(address: str, city_hint="Valencia, España"):
+    """
+    Devuelve {"lat": .., "lon": .., "direccion_completa": ..} si encuentra
+    la dirección, o None si ningún geocodificador encontró nada.
+
+    Prueba primero ArcGIS; si ArcGIS falla por completo (no solo "no
+    encontrado", sino error de servicio), prueba Nominatim como fallback.
+    Solo lanza GeocodingServiceError si AMBOS fallan — esto NO significa
+    que la dirección esté mal escrita, significa que los dos servicios de
+    geocodificación gratuitos fallaron.
+    """
+    query = address if "valencia" in address.lower() else f"{address}, {city_hint}"
+
+    try:
+        location = _intentar_geocodificar(_geolocator_principal, query)
+        if location is not None:
             return {
                 "lat": location.latitude,
                 "lon": location.longitude,
                 "direccion_completa": location.address,
             }
-        except (GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError) as e:
-            last_error = e
-            time.sleep(1.5 * (intento + 1))  # backoff progresivo
-        except Exception as e:
-            # Cualquier otro error inesperado también se trata como fallo
-            # de servicio, no como "dirección no encontrada", para no
-            # confundir al usuario.
-            last_error = e
-            time.sleep(1.5 * (intento + 1))
+        # ArcGIS respondió pero no encontró nada — antes de rendirnos,
+        # probamos también con Nominatim por si tiene mejor cobertura
+        # para esta dirección concreta.
+    except GeocodingServiceError:
+        pass  # ArcGIS falló como servicio; probamos el fallback
 
-    raise GeocodingServiceError(
-        f"El servicio de geocodificación (Nominatim) no respondió tras "
-        f"{max_retries} intentos. Esto NO significa que la dirección esté "
-        f"mal escrita — es un fallo temporal del servicio externo gratuito. "
-        f"Último error: {last_error}"
-    )
+    try:
+        location = _intentar_geocodificar(_geolocator_fallback, query)
+        if location is None:
+            return None
+        return {
+            "lat": location.latitude,
+            "lon": location.longitude,
+            "direccion_completa": location.address,
+        }
+    except GeocodingServiceError as e:
+        raise GeocodingServiceError(
+            f"Tanto ArcGIS como Nominatim (los dos geocodificadores "
+            f"gratuitos usados) fallaron al buscar '{address}'. Esto NO "
+            f"significa que la dirección esté mal escrita — es un fallo "
+            f"temporal de ambos servicios externos. Último error: {e}"
+        )
