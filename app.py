@@ -36,7 +36,7 @@ from src.interpolation import estimate_environmental_profile, get_nearest_statio
 from src.accessibility import compute_accessibility_profile, top_n_nearest, count_within_minutes, walking_time_to_nearest
 from src.noise_inference import estimate_noise_from_traffic
 from src.index import compute_ibup, ibup_label, PERFILES_USUARIO
-from src.clustering import load_cluster_grid, get_cluster_for_point, validate_cluster_grid
+from src.clustering import load_cluster_grid, get_cluster_for_point, validate_cluster_grid, CLUSTER_LABELS
 from src.report_export import generar_informe_comparativo
 
 st.set_page_config(page_title="Mi Barrio Activo y Sano", page_icon="🏠", layout="wide")
@@ -505,6 +505,60 @@ if "resultados" in st.session_state:
                 unsafe_allow_html=True,
             )
 
+    # --- Mapa de tipos de barrio (clusters) ------------------------------
+    cluster_grid_mapa = load_cluster_grid()
+    if not cluster_grid_mapa.empty and "cluster" in cluster_grid_mapa.columns:
+        st.markdown("##### 🗺️ Mapa de tipos de barrio en Valencia")
+        st.caption(
+            "Cada punto representa una celda de la cuadrícula de análisis, coloreada según "
+            "el tipo de zona (clustering K-means). Tus direcciones se marcan con un pin."
+        )
+
+        # Paleta consistente con CLUSTER_LABELS — colores con buen contraste
+        # entre sí, en línea con la paleta mediterránea del resto de la app.
+        COLORES_CLUSTER = {
+            0: "#C65D3B",  # terracota — Céntrico y dinámico
+            1: "#3D6B4F",  # verde Turia — Residencial equilibrado
+            2: "#9a9088",  # gris cálido — Periferia, poco conectado
+            3: "#2F6E8C",  # azul cerámica — Bien conectado, más tráfico
+        }
+
+        mapa_clusters = folium.Map(location=[39.4699, -0.3763], zoom_start=12, tiles="CartoDB positron")
+
+        for _, fila in cluster_grid_mapa.iterrows():
+            cluster_id = int(fila["cluster"])
+            color = COLORES_CLUSTER.get(cluster_id, "#9a9088")
+            etiqueta = CLUSTER_LABELS.get(cluster_id, f"Cluster {cluster_id}")
+            folium.CircleMarker(
+                [fila["lat"], fila["lon"]],
+                radius=6,
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.55,
+                stroke=False,
+                tooltip=etiqueta,
+            ).add_to(mapa_clusters)
+
+        # Marcamos las direcciones del usuario por encima, bien visibles
+        for r in resultados:
+            folium.Marker(
+                [r["lat"], r["lon"]],
+                tooltip=r["direccion"][:40],
+                icon=folium.Icon(color="black", icon="home"),
+            ).add_to(mapa_clusters)
+
+        # Leyenda simple como HTML superpuesto
+        leyenda_html = '<div style="background:white; padding:0.6rem 0.8rem; border-radius:8px; font-size:0.8rem; line-height:1.5; box-shadow:0 1px 4px rgba(0,0,0,0.15);">'
+        for cluster_id, etiqueta in CLUSTER_LABELS.items():
+            color = COLORES_CLUSTER.get(cluster_id, "#9a9088")
+            etiqueta_limpia = etiqueta
+            leyenda_html += f'<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{color}; margin-right:6px;"></span>{etiqueta_limpia}<br>'
+        leyenda_html += "</div>"
+
+        st_folium(mapa_clusters, width=900, height=480, key="mapa_clusters", returned_objects=[])
+        st.markdown(leyenda_html, unsafe_allow_html=True)
+
     # --- Radar comparativo ----------------------------------------------
     st.markdown("##### 📊 Comparativa visual")
     categorias = ["no2", "pm10", "ruido_db", "tiempo_deporte_min", "tiempo_bici_min", "tiempo_verde_min", "tiempo_transporte_min"]
@@ -534,6 +588,59 @@ if "resultados" in st.session_state:
         height=420,
     )
     st.plotly_chart(fig, width="stretch")
+
+    # --- Barras apiladas: contribución de cada componente al IBUP --------
+    st.markdown("##### 🧱 ¿Qué pesa más en cada IBUP?")
+    st.caption(
+        "Cada barra suma el IBUP total. Los segmentos muestran cuánto aporta cada "
+        "componente, combinando su score (0-100) con el peso que le da tu perfil — "
+        "así se ve no solo el resultado final, sino qué lo está empujando."
+    )
+
+    nombres_componentes = {
+        "no2": "NO2", "pm10": "PM10", "pm25": "PM2.5", "ruido_db": "Ruido",
+        "tiempo_deporte_min": "Deporte", "tiempo_bici_min": "Carril bici",
+        "tiempo_verde_min": "Zona verde", "tiempo_transporte_min": "Transporte",
+    }
+    paleta_componentes = {
+        "no2": "#C65D3B", "pm10": "#D98C6F", "pm25": "#E8B4A0", "ruido_db": "#8C4A3A",
+        "tiempo_deporte_min": "#3D6B4F", "tiempo_bici_min": "#6B9C7A",
+        "tiempo_verde_min": "#A8C9AE", "tiempo_transporte_min": "#2F6E8C",
+    }
+
+    fig_barras = go.Figure()
+    direcciones_cortas = [r["direccion"][:30] for r in resultados]
+
+    for comp_key, comp_nombre in nombres_componentes.items():
+        valores_aporte = []
+        for r in resultados:
+            score = r["ibup"]["componentes"].get(comp_key)
+            peso = r["ibup"]["pesos_usados"].get(comp_key, 0)
+            aporte = (score * peso) if (score is not None) else 0
+            valores_aporte.append(aporte)
+
+        if all(v == 0 for v in valores_aporte):
+            continue  # este componente no tiene datos en ninguna dirección, no lo dibujamos
+
+        fig_barras.add_trace(
+            go.Bar(
+                name=comp_nombre,
+                x=direcciones_cortas,
+                y=valores_aporte,
+                marker_color=paleta_componentes.get(comp_key, "#9a9088"),
+            )
+        )
+
+    fig_barras.update_layout(
+        barmode="stack",
+        height=380,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter"),
+        yaxis=dict(title="IBUP (puntos aportados)", gridcolor="rgba(43,38,32,0.08)"),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.25),
+    )
+    st.plotly_chart(fig_barras, width="stretch")
 
     # --- Contexto detallado por dirección --------------------------------
     st.markdown("##### 🔎 Contexto detallado por dirección")
