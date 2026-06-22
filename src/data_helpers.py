@@ -354,3 +354,87 @@ def get_estaciones_ruido_con_valor(ruido_df, valor_por_defecto=55.0):
     df = ruido_df.copy()
     df["ruido_db"] = valor_por_defecto
     return df
+
+
+@st.cache_data
+def load_paradas_emt():
+    """
+    Carga paradas de autobús EMT activas (excluye las marcadas como
+    'suprimida', que ya no están en servicio), con sus líneas asociadas.
+    """
+    path = RAW_DIR / "paradas_emt.geojson"
+    if not path.exists():
+        return []
+
+    with open(path, "r", encoding="utf-8") as f:
+        geo = json.load(f)
+
+    points = []
+    for feature in geo.get("features", []):
+        props = feature.get("properties", {})
+        if str(props.get("suprimida")) == "1":
+            continue  # parada fuera de servicio
+        geom = feature.get("geometry")
+        if not geom or geom.get("type") != "Point":
+            continue
+        lon, lat = geom["coordinates"][:2]
+        nombre = props.get("denominacion") or "Parada EMT"
+        points.append({"lat": lat, "lon": lon, "nombre": nombre, "lineas": props.get("lineas")})
+
+    return points
+
+
+@st.cache_data
+def load_estaciones_fgv():
+    """Carga estaciones de Metrovalencia/tranvía (FGV), con sus líneas."""
+    path = RAW_DIR / "estaciones_fgv.geojson"
+    if not path.exists():
+        return []
+
+    with open(path, "r", encoding="utf-8") as f:
+        geo = json.load(f)
+
+    points = []
+    for feature in geo.get("features", []):
+        props = feature.get("properties", {})
+        geom = feature.get("geometry")
+        if not geom or geom.get("type") != "Point":
+            continue
+        lon, lat = geom["coordinates"][:2]
+        nombre = props.get("nombre") or "Estación FGV"
+        points.append({"lat": lat, "lon": lon, "nombre": nombre, "linea": props.get("linea")})
+
+    return points
+
+
+@st.cache_data
+def load_valenbisi():
+    """
+    Carga estaciones Valenbisi abiertas, con su disponibilidad actual de
+    bicis y huecos libres (dato en tiempo real del geoportal, actualizado
+    cada pocos minutos).
+    """
+    path = RAW_DIR / "valenbisi.geojson"
+    if not path.exists():
+        return []
+
+    with open(path, "r", encoding="utf-8") as f:
+        geo = json.load(f)
+
+    points = []
+    for feature in geo.get("features", []):
+        props = feature.get("properties", {})
+        if str(props.get("open")) != "T":
+            continue  # estación cerrada
+        geom = feature.get("geometry")
+        if not geom or geom.get("type") != "Point":
+            continue
+        lon, lat = geom["coordinates"][:2]
+        nombre = props.get("name") or props.get("address") or "Valenbisi"
+        points.append({
+            "lat": lat, "lon": lon, "nombre": nombre,
+            "bicis_disponibles": props.get("available"),
+            "huecos_libres": props.get("free"),
+        })
+
+    return points
