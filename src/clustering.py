@@ -55,10 +55,10 @@ CLUSTER_FEATURES = ["no2", "pm10", "ruido_db", "tiempo_deporte_min", "tiempo_ver
 # Si se regenera el clustering con datos distintos, vuelve a comparar los
 # centroides nuevos contra esta tabla antes de reusar las etiquetas.
 CLUSTER_LABELS = {
-    0: "🏙️ Céntrico y dinámico",
-    1: "🏘️ Residencial equilibrado",
-    2: "🌾 Periferia, poco conectado",
-    3: "🚗 Bien conectado, más tráfico",
+    0: "🏙️ Central and lively",
+    1: "🏘️ Balanced residential",
+    2: "🌾 Outskirts, poorly connected",
+    3: "🚗 Well connected, more traffic",
 }
 
 
