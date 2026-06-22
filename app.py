@@ -28,12 +28,15 @@ from src.data_helpers import (
     load_intensidad_trafico,
     load_mercados,
     load_centros_salud,
+    load_paradas_emt,
+    load_estaciones_fgv,
+    load_valenbisi,
 )
 from src.interpolation import estimate_environmental_profile, get_nearest_station_info, compute_city_averages
-from src.accessibility import compute_accessibility_profile, top_n_nearest, count_within_minutes
+from src.accessibility import compute_accessibility_profile, top_n_nearest, count_within_minutes, walking_time_to_nearest
 from src.noise_inference import estimate_noise_from_traffic
 from src.index import compute_ibup, ibup_label, PERFILES_USUARIO
-from src.clustering import load_cluster_grid, get_cluster_for_point
+from src.clustering import load_cluster_grid, get_cluster_for_point, validate_cluster_grid
 
 st.set_page_config(page_title="Mi Barrio Activo y Sano", page_icon="🏠", layout="wide")
 
@@ -270,28 +273,31 @@ for i, col in enumerate(cols):
 # ---------------------------------------------------------------------------
 if perfil_seleccionado == "personalizado":
     st.markdown("##### 🎛️ Ajusta qué te importa más")
-    w_cols = st.columns(6)
+    w_cols = st.columns(7)
     with w_cols[0]:
-        w_no2 = st.slider("NO2", 0, 100, 20, key="w_no2")
+        w_no2 = st.slider("NO2", 0, 100, 17, key="w_no2")
     with w_cols[1]:
-        w_pm10 = st.slider("PM10", 0, 100, 12, key="w_pm10")
+        w_pm10 = st.slider("PM10", 0, 100, 10, key="w_pm10")
     with w_cols[2]:
-        w_ruido = st.slider("Ruido", 0, 100, 20, key="w_ruido")
+        w_ruido = st.slider("Ruido", 0, 100, 18, key="w_ruido")
     with w_cols[3]:
-        w_deporte = st.slider("Deporte", 0, 100, 18, key="w_deporte")
+        w_deporte = st.slider("Deporte", 0, 100, 15, key="w_deporte")
     with w_cols[4]:
-        w_bici = st.slider("Carril bici", 0, 100, 8, key="w_bici")
+        w_bici = st.slider("Carril bici", 0, 100, 7, key="w_bici")
     with w_cols[5]:
-        w_verde = st.slider("Zonas verdes", 0, 100, 14, key="w_verde")
+        w_verde = st.slider("Zonas verdes", 0, 100, 12, key="w_verde")
+    with w_cols[6]:
+        w_transporte = st.slider("Transporte público", 0, 100, 14, key="w_transporte")
 
     weights = {
         "no2": w_no2,
         "pm10": w_pm10,
-        "pm25": 8,
+        "pm25": 7,
         "ruido_db": w_ruido,
         "tiempo_deporte_min": w_deporte,
         "tiempo_bici_min": w_bici,
         "tiempo_verde_min": w_verde,
+        "tiempo_transporte_min": w_transporte,
     }
 else:
     weights = PERFILES_USUARIO[perfil_seleccionado]["weights"]
@@ -323,6 +329,15 @@ if ejecutar:
         traffic_segments = load_intensidad_trafico()
         cluster_grid = load_cluster_grid()
         city_averages = compute_city_averages(stations_with_values)
+
+        # Transporte público: combinamos EMT (bus), FGV (metro/tranvía) y
+        # Valenbisi (bici pública) en una sola lista — el usuario quiere
+        # saber "¿qué tan cerca tengo transporte público?" en general, sin
+        # tener que mirar 3 cosas distintas por separado.
+        paradas_emt = load_paradas_emt()
+        estaciones_fgv = load_estaciones_fgv()
+        valenbisi_points = load_valenbisi()
+        transporte_points = paradas_emt + estaciones_fgv + valenbisi_points
 
     if stations_with_values.empty:
         st.error(
@@ -362,6 +377,7 @@ if ejecutar:
             )
             conteo_verde_15min = count_within_minutes(lat, lon, verde_points, minutos_max=15)
             conteo_deporte_15min = count_within_minutes(lat, lon, deporte_points, minutos_max=15)
+            transporte_cercano = walking_time_to_nearest(lat, lon, transporte_points)
         except FileNotFoundError as e:
             st.error(str(e))
             st.stop()
@@ -374,6 +390,7 @@ if ejecutar:
             "tiempo_deporte_min": perfil_acceso["deporte"]["minutos"] if perfil_acceso["deporte"] else None,
             "tiempo_bici_min": perfil_acceso["carril_bici"]["minutos"] if perfil_acceso["carril_bici"] else None,
             "tiempo_verde_min": perfil_acceso["verde"]["minutos"] if perfil_acceso["verde"] else None,
+            "tiempo_transporte_min": transporte_cercano["minutos"] if transporte_cercano else None,
         }
 
         ibup_result = compute_ibup(raw_values, weights)
@@ -391,6 +408,7 @@ if ejecutar:
                 "cluster_info": cluster_info,
                 "conteo_verde_15min": conteo_verde_15min,
                 "conteo_deporte_15min": conteo_deporte_15min,
+                "transporte_cercano": transporte_cercano,
             }
         )
 
@@ -423,8 +441,24 @@ def _es_valido(valor):
 if "resultados" in st.session_state:
     resultados = st.session_state["resultados"]
 
-    st.divider()
-    st.subheader(f"📋 Resultados (perfil: {st.session_state.get('perfil_usado', '')})")
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div style="background:linear-gradient(135deg, #F2E9D8 0%, #FBF6EE 100%);
+                    border-radius:16px; padding:1.6rem 1.8rem; margin-bottom:1.2rem;
+                    border:1px solid rgba(43,38,32,0.08);">
+            <span class="hero-eyebrow">Análisis completado</span>
+            <p style="font-family:'Fraunces',serif; font-weight:700; font-size:1.7rem;
+                      color:#2B2620; margin:0.3rem 0 0.2rem 0;">
+                📊 Resultados del análisis
+            </p>
+            <p style="color:#7a6f60; margin:0; font-size:0.95rem;">
+                Perfil aplicado: <strong>{st.session_state.get('perfil_usado', '')}</strong>
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # --- Mapa + métricas principales -----------------------------------
     mapa = folium.Map(location=[39.4699, -0.3763], zoom_start=12)
@@ -472,8 +506,8 @@ if "resultados" in st.session_state:
 
     # --- Radar comparativo ----------------------------------------------
     st.markdown("##### 📊 Comparativa visual")
-    categorias = ["no2", "pm10", "ruido_db", "tiempo_deporte_min", "tiempo_bici_min", "tiempo_verde_min"]
-    categorias_labels = ["NO2", "PM10", "Ruido (estimado)", "Acceso deporte", "Acceso bici", "Acceso verde"]
+    categorias = ["no2", "pm10", "ruido_db", "tiempo_deporte_min", "tiempo_bici_min", "tiempo_verde_min", "tiempo_transporte_min"]
+    categorias_labels = ["NO2", "PM10", "Ruido (estimado)", "Acceso deporte", "Acceso bici", "Acceso verde", "Transporte público"]
     paleta_radar = ["#C65D3B", "#3D6B4F", "#2F6E8C"]
 
     fig = go.Figure()
@@ -592,6 +626,15 @@ if "resultados" in st.session_state:
                     f"{conteo_deporte['conteo'] if conteo_deporte else 0} instalaciones deportivas"
                 )
 
+            # --- Transporte público ---------------------------------------
+            transporte_cercano = r.get("transporte_cercano")
+            if transporte_cercano:
+                st.markdown("---")
+                st.markdown(
+                    f"**🚌 Transporte público más cercano**: {transporte_cercano['nombre']} "
+                    f"({transporte_cercano['minutos']} min a pie)"
+                )
+
             # --- Top 5 ---------------------------------------------------
             st.markdown("---")
             key_top5 = f"top5_{r['direccion'][:20]}_{r['lat']}_{r['lon']}"
@@ -648,6 +691,45 @@ if "resultados" in st.session_state:
                             st.markdown(f"{i}. {s['nombre']} — {s['minutos']} min")
                     else:
                         st.caption("Sin datos disponibles.")
+
+    # --- Validación del modelo --------------------------------------------
+    st.markdown("##### 🔬 Validación del modelo")
+    with st.expander("¿Cómo sabemos que estos cálculos son razonables, no inventados?"):
+        validacion = validate_cluster_grid()
+        if validacion:
+            col_v1, col_v2, col_v3 = st.columns(3)
+            with col_v1:
+                st.metric("Coeficiente de silueta", f"{validacion['silhouette_score']:.2f}")
+                st.caption("Mide cuán bien separados están los 4 tipos de barrio (rango -1 a +1; >0.25 ya es razonable en datos urbanos reales, no sintéticos)")
+            with col_v2:
+                st.metric("Puntos del grid analizados", validacion["n_puntos"])
+                st.caption("Cuadrícula de ~400 puntos sobre todo el término municipal de Valencia")
+            with col_v3:
+                st.metric("Tipos de barrio (k)", validacion["n_clusters"])
+                st.caption("Elegido con el método del codo sobre la inercia de K-means")
+        else:
+            st.caption("Validación del clustering no disponible (genera primero `barrios_clusters.geojson`).")
+
+        st.markdown(
+            """
+---
+**Interpolación de contaminación (IDW)**: el NO2/PM10/PM2.5 en cualquier punto se estima
+ponderando el valor de las estaciones reales cercanas por el inverso de su distancia
+al cuadrado — un método estándar en geoestadística cuando hay pocos puntos de medición
+(~11 estaciones en Valencia) y se necesita estimar en zonas sin sensor.
+
+**Ruido estimado por tráfico**: el dataset oficial de ruido de Valencia solo tiene 4
+estaciones sin valores en dB descargables. En su lugar, se infiere el ruido a partir
+de la intensidad de tráfico (IMV) en los tramos de calle más cercanos, con una relación
+logarítmica estándar en acústica de tráfico (más vehículos/día → más dB) y atenuación
+por distancia. Es una **estimación**, no una medición certificada — por eso se etiqueta
+siempre como "ruido estimado" en la interfaz, nunca como dato medido.
+
+**Accesibilidad real**: los tiempos a pie no son distancia en línea recta — se calculan
+sobre el grafo real de calles de Valencia (OpenStreetMap), encontrando la ruta peatonal
+más corta de verdad entre el punto y cada instalación.
+            """
+        )
 
     # --- Tabla de valores crudos ------------------------------------------
     with st.expander("📐 Ver valores numéricos sin normalizar"):
