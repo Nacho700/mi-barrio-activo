@@ -28,16 +28,18 @@ REFERENCE_RANGES = {
     "tiempo_deporte_min": {"bueno": 5, "malo": 25},
     "tiempo_bici_min": {"bueno": 3, "malo": 20},
     "tiempo_verde_min": {"bueno": 3, "malo": 20},
+    "tiempo_transporte_min": {"bueno": 3, "malo": 15},  # parada EMT/FGV/Valenbisi más cercana
 }
 
 DEFAULT_WEIGHTS = {
-    "no2": 0.20,
-    "pm10": 0.12,
-    "pm25": 0.08,
-    "ruido_db": 0.20,
-    "tiempo_deporte_min": 0.18,
-    "tiempo_bici_min": 0.08,
-    "tiempo_verde_min": 0.14,
+    "no2": 0.17,
+    "pm10": 0.10,
+    "pm25": 0.07,
+    "ruido_db": 0.18,
+    "tiempo_deporte_min": 0.15,
+    "tiempo_bici_min": 0.07,
+    "tiempo_verde_min": 0.12,
+    "tiempo_transporte_min": 0.14,
 }
 
 # ---------------------------------------------------------------------------
@@ -56,24 +58,27 @@ PERFILES_USUARIO = {
         "nombre": "👨‍👩‍👧 Familia con niños",
         "descripcion": "Prioriza aire limpio, poco ruido y zonas verdes para jugar.",
         "weights": {
-            "no2": 0.22, "pm10": 0.14, "pm25": 0.12, "ruido_db": 0.22,
-            "tiempo_deporte_min": 0.08, "tiempo_bici_min": 0.04, "tiempo_verde_min": 0.18,
+            "no2": 0.19, "pm10": 0.12, "pm25": 0.10, "ruido_db": 0.19,
+            "tiempo_deporte_min": 0.07, "tiempo_bici_min": 0.03, "tiempo_verde_min": 0.16,
+            "tiempo_transporte_min": 0.14,
         },
     },
     "deportista": {
         "nombre": "🏃 Deportista",
         "descripcion": "Prioriza acceso rápido a instalaciones deportivas, carril bici y zonas verdes para entrenar.",
         "weights": {
-            "no2": 0.15, "pm10": 0.10, "pm25": 0.08, "ruido_db": 0.07,
-            "tiempo_deporte_min": 0.30, "tiempo_bici_min": 0.18, "tiempo_verde_min": 0.12,
+            "no2": 0.13, "pm10": 0.09, "pm25": 0.07, "ruido_db": 0.06,
+            "tiempo_deporte_min": 0.26, "tiempo_bici_min": 0.16, "tiempo_verde_min": 0.11,
+            "tiempo_transporte_min": 0.12,
         },
     },
     "mayor": {
         "nombre": "🧓 Persona mayor",
         "descripcion": "Prioriza tranquilidad (poco ruido) y aire limpio por encima de la accesibilidad deportiva.",
         "weights": {
-            "no2": 0.24, "pm10": 0.16, "pm25": 0.12, "ruido_db": 0.28,
-            "tiempo_deporte_min": 0.04, "tiempo_bici_min": 0.02, "tiempo_verde_min": 0.14,
+            "no2": 0.20, "pm10": 0.13, "pm25": 0.10, "ruido_db": 0.23,
+            "tiempo_deporte_min": 0.04, "tiempo_bici_min": 0.02, "tiempo_verde_min": 0.13,
+            "tiempo_transporte_min": 0.15,
         },
     },
     "personalizado": {
