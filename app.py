@@ -37,6 +37,7 @@ from src.accessibility import compute_accessibility_profile, top_n_nearest, coun
 from src.noise_inference import estimate_noise_from_traffic
 from src.index import compute_ibup, ibup_label, PERFILES_USUARIO
 from src.clustering import load_cluster_grid, get_cluster_for_point, validate_cluster_grid
+from src.report_export import generar_informe_comparativo
 
 st.set_page_config(page_title="Mi Barrio Activo y Sano", page_icon="🏠", layout="wide")
 
@@ -630,9 +631,22 @@ if "resultados" in st.session_state:
             transporte_cercano = r.get("transporte_cercano")
             if transporte_cercano:
                 st.markdown("---")
+                extra_transporte = transporte_cercano.get("extra", {})
+                detalle_extra = []
+
+                lineas = extra_transporte.get("lineas") or extra_transporte.get("linea")
+                if _es_valido(lineas):
+                    detalle_extra.append(f"Líneas: {lineas}")
+
+                bicis = extra_transporte.get("bicis_disponibles")
+                huecos = extra_transporte.get("huecos_libres")
+                if _es_valido(bicis) and _es_valido(huecos):
+                    detalle_extra.append(f"🚲 {int(float(bicis))} bicis disponibles ahora, {int(float(huecos))} huecos libres")
+
+                texto_extra = " · " + " · ".join(detalle_extra) if detalle_extra else ""
                 st.markdown(
                     f"**🚌 Transporte público más cercano**: {transporte_cercano['nombre']} "
-                    f"({transporte_cercano['minutos']} min a pie)"
+                    f"({transporte_cercano['minutos']} min a pie){texto_extra}"
                 )
 
             # --- Top 5 ---------------------------------------------------
@@ -692,6 +706,63 @@ if "resultados" in st.session_state:
                     else:
                         st.caption("Sin datos disponibles.")
 
+    # --- Ranking narrativo automático --------------------------------------
+    if len(resultados) >= 2:
+        st.markdown("##### 🏅 ¿Cuál gana en qué?")
+
+        COMPONENTE_NOMBRES = {
+            "no2": "aire (NO2)",
+            "pm10": "aire (PM10)",
+            "pm25": "aire (PM2.5)",
+            "ruido_db": "tranquilidad",
+            "tiempo_deporte_min": "acceso a deporte",
+            "tiempo_bici_min": "acceso a carril bici",
+            "tiempo_verde_min": "acceso a zonas verdes",
+            "tiempo_transporte_min": "transporte público",
+        }
+
+        # Comparamos cada par de direcciones componente a componente, usando
+        # los scores ya normalizados (0-100, donde más alto = mejor) en vez
+        # de los valores crudos, porque así "menos ruido" y "más cerca del
+        # parque" se comparan en la misma escala sin lógica especial por
+        # componente.
+        for i in range(len(resultados)):
+            for j in range(i + 1, len(resultados)):
+                r1, r2 = resultados[i], resultados[j]
+                comp1 = r1["ibup"]["componentes"]
+                comp2 = r2["ibup"]["componentes"]
+
+                gana_r1, gana_r2 = [], []
+                for clave, nombre_legible in COMPONENTE_NOMBRES.items():
+                    v1, v2 = comp1.get(clave), comp2.get(clave)
+                    if v1 is None or v2 is None:
+                        continue
+                    diferencia = v1 - v2
+                    if abs(diferencia) < 3:
+                        continue  # diferencia pequeña, no merece destacarse
+                    if diferencia > 0:
+                        gana_r1.append(nombre_legible)
+                    else:
+                        gana_r2.append(nombre_legible)
+
+                nombre1 = r1["direccion"][:35]
+                nombre2 = r2["direccion"][:35]
+
+                with st.container(border=True):
+                    col_izq, col_der = st.columns(2)
+                    with col_izq:
+                        st.markdown(f"**📍 {nombre1}** gana en:")
+                        if gana_r1:
+                            st.markdown(" · ".join(f"`{c}`" for c in gana_r1))
+                        else:
+                            st.caption("Sin ventajas claras")
+                    with col_der:
+                        st.markdown(f"**📍 {nombre2}** gana en:")
+                        if gana_r2:
+                            st.markdown(" · ".join(f"`{c}`" for c in gana_r2))
+                        else:
+                            st.caption("Sin ventajas claras")
+
     # --- Validación del modelo --------------------------------------------
     st.markdown("##### 🔬 Validación del modelo")
     with st.expander("¿Cómo sabemos que estos cálculos son razonables, no inventados?"):
@@ -735,3 +806,23 @@ más corta de verdad entre el punto y cada instalación.
     with st.expander("📐 Ver valores numéricos sin normalizar"):
         tabla = pd.DataFrame([r["raw"] for r in resultados], index=[r["direccion"][:30] for r in resultados])
         st.dataframe(tabla)
+
+    # --- Exportar a PDF ----------------------------------------------------
+    st.markdown("##### 📄 Llevarte el análisis")
+    if st.button("Generar informe PDF descargable"):
+        with st.spinner("Generando PDF..."):
+            pdf_path = generar_informe_comparativo(
+                resultados, st.session_state.get("perfil_usado", "")
+            )
+            with open(pdf_path, "rb") as f:
+                st.session_state["pdf_bytes"] = f.read()
+            st.session_state["pdf_name"] = pdf_path.name
+        st.success("Informe generado.")
+
+    if "pdf_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Descargar informe PDF",
+            data=st.session_state["pdf_bytes"],
+            file_name=st.session_state["pdf_name"],
+            mime="application/pdf",
+        )
