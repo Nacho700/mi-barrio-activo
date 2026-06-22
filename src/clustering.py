@@ -132,6 +132,60 @@ def describe_clusters(features_df: pd.DataFrame, labels, feature_cols=None):
     return df.groupby("cluster").mean().round(1)
 
 
+def validate_cluster_grid(cluster_grid: pd.DataFrame = None, feature_cols=None):
+    """
+    Calcula métricas de validación del clustering YA GUARDADO en
+    barrios_clusters.geojson, sin necesidad de volver a ejecutar K-means.
+
+    Usa el coeficiente de silueta (silhouette score): mide, para cada
+    punto, cuán parecido es a su propio cluster frente a los demás
+    clusters. Va de -1 (mal asignado) a +1 (perfectamente separado); por
+    encima de ~0.25-0.3 ya se considera una estructura de cluster
+    razonable en problemas de ciencias sociales/urbanas (no se espera la
+    separación nítida de un problema sintético).
+
+    Si cluster_grid no se pasa, se carga automáticamente con
+    load_cluster_grid().
+
+    Returns
+    -------
+    dict con {"silhouette_score": float, "n_puntos": int, "n_clusters": int}
+    o None si no hay datos suficientes (menos de 2 clusters o grid vacío).
+    """
+    from sklearn.metrics import silhouette_score
+
+    if cluster_grid is None:
+        cluster_grid = load_cluster_grid()
+
+    if cluster_grid.empty or "cluster" not in cluster_grid.columns:
+        return None
+
+    if feature_cols is None:
+        feature_cols = CLUSTER_FEATURES
+
+    columnas_presentes = [c for c in feature_cols if c in cluster_grid.columns]
+    if len(columnas_presentes) < 2:
+        return None
+
+    X = cluster_grid[columnas_presentes].copy()
+    X = X.fillna(X.mean())
+    labels = cluster_grid["cluster"].astype(int)
+
+    if labels.nunique() < 2:
+        return None  # silhouette no está definido con un solo cluster
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    score = silhouette_score(X_scaled, labels)
+
+    return {
+        "silhouette_score": round(float(score), 3),
+        "n_puntos": len(cluster_grid),
+        "n_clusters": int(labels.nunique()),
+    }
+
+
 def load_cluster_grid():
     """
     Carga el grid precalculado de clusters (generado offline). Devuelve un
