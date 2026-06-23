@@ -1,120 +1,154 @@
-# Mi Barrio Activo y Sano
 
-Aplicación Streamlit que ayuda a decidir **dónde vivir en Valencia** combinando
-contaminación, ruido, acceso a deporte y zonas verdes en un único índice
-personal — y genera un **informe de incidencia ciudadana** cuantificado para
-defender mejoras concretas (carril bici, arbolado, instalación deportiva) en
-una zona ante el ayuntamiento o la asociación de vecinos.
+**Live app:** https://trabajoedm.streamlit.app/
 
-## 1. Requisitos
+A Streamlit application that helps you decide **where to live in Valencia**
+using real open government data instead of guesswork. It combines air
+pollution, traffic-based noise estimation, accessibility to sports/green
+space/public transport, and automatic neighbourhood clustering into a single
+**Personal Urban Wellbeing Index (IBUP)** — personalised through user
+profiles (family, athlete, older adult, or fully custom) that automatically
+reweight what matters most to each one.
+
+Academic project — UPV, Data Science degree (EDM coursework).
+
+---
+
+## What the app does
+
+- **Compare up to 3 addresses** side by side with a single wellbeing score (0-100)
+- **Choose a profile** (Balanced / Family with children / Athlete / Older adult / Custom) that reweights the index automatically
+- **See exactly what's driving each score** with a stacked bar chart breakdown
+- **Explore a city-wide neighbourhood type map** (K-means clustering, validated with a silhouette score)
+- **Check real walking-distance rankings** — Top 5 nearest green spaces, sports facilities, markets, and health centres
+- **Compare value for money** by entering a real asking price per address
+- **Export a PDF report** of the full comparison
+
+## Data Science methods used
+
+1. **Spatial interpolation (IDW)** — estimates NO2/PM10/PM2.5 at any point in
+   the city from Valencia's ~11 real monitoring stations, weighting them by
+   inverse squared distance.
+2. **Noise inference from traffic data** — Valencia's official noise dataset
+   only has 4 stations with no usable dB values, so noise is estimated from
+   real-time traffic intensity (IMV) at nearby street segments, using a
+   standard logarithmic relationship from traffic acoustics with distance
+   attenuation. Always labelled as an *estimate* in the UI, never presented
+   as a measurement.
+3. **Real-network accessibility** — walking times to sports facilities, bike
+   lanes, green spaces, and public transport (EMT buses, FGV metro/tram,
+   Valenbisi) are computed on Valencia's actual pedestrian street graph
+   (OpenStreetMap via OSMnx), not straight-line distance.
+4. **K-means clustering** — a ~400-point grid covering the whole municipality
+   is clustered into 4 neighbourhood types based on pollution, noise, and
+   accessibility. Validated with the elbow method (choosing k) and the
+   silhouette score (checking cluster quality), both shown in the app rather
+   than asserted.
+5. **Weighted composite index** — the final IBUP score combines all
+   components with user-adjustable weights, normalised so missing data
+   doesn't unfairly penalise an address.
+
+## Requirements
 
 - Python 3.10+
-- Conexión a internet (la app llama en vivo a la API de Open Data València
-  y a OpenStreetMap; no necesitas tener los datos descargados a mano, pero
-  puedes pre-descargarlos para ir más rápido — ver sección 3)
+- Internet connection (the app calls Valencia's open data API and
+  OpenStreetMap live)
 
-## 2. Instalación
+## Installation
 
 ```bash
-git clone <tu-repo>
+git clone https://github.com/Nacho700/mi-barrio-activo.git
 cd mi-barrio-activo
 python -m venv venv
-source venv/bin/activate        # En Windows: venv\Scripts\activate
+source venv/bin/activate        # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## 3. Datos: ¿qué te tienes que descargar?
+## Data setup
 
-**Buena noticia: NADA es obligatorio descargar a mano.** Toda la app llama
-en vivo a las APIs públicas (Open Data València vía Opendatasoft, y
-OpenStreetMap vía OSMnx) y cachea los resultados automáticamente en
-`data/raw/` y `data/processed/` la primera vez que se ejecuta.
+**Nothing needs to be downloaded by hand to run the app** — it can call the
+live APIs and cache results automatically. However, this repo already ships
+with the data pre-downloaded in `data/raw/` and `data/processed/`
+(including the pre-computed clustering grid), so it works out of the box.
 
-Aun así, te recomiendo **pre-descargar y cachear todo ANTES de la demo en
-vídeo**, para que la app vaya rápida y no dependas de la red en directo
-delante del jurado. Para eso:
+To refresh the data yourself:
 
 ```bash
 python src/data_loader.py --download-all
 ```
 
-Esto descarga y guarda en `data/raw/`:
+This downloads, into `data/raw/`:
 
-| Archivo generado | Fuente | Contenido |
-|---|---|---|
-| `estaciones_contaminacion.geojson` | Open Data València (Opendatasoft) | Ubicación de las ~10 estaciones de calidad del aire/ruido |
-| `calidad_aire_historico.csv` | Open Data València | Histórico diario de NO2, PM10, PM2.5, ruido (SPL) por estación |
-| `arbolado.geojson` | Open Data València | Inventario de arbolado (puntos geolocalizados) |
-| `zonas_verdes.geojson` | Open Data València | Parques y jardines actuales/planificados |
-| `carril_bici.geojson` | Open Data València | Itinerarios ciclistas (líneas) |
-| `instalaciones_deportivas.csv` | datos.gob.es / geoportal Ayto. Valencia | Pistas, polideportivos, piscinas municipales |
-| `grafo_valencia.graphml` | OpenStreetMap (vía OSMnx) | Red de calles peatonal de Valencia, para calcular distancias a pie |
+| File | Content |
+|---|---|
+| `estaciones_contaminacion.geojson` | ~11 stations with current NO2, PM10, PM2.5, air quality label, emission type |
+| `estaciones_ruido.geojson` | Location of the 4 official noise stations (no accessible dB values) |
+| `intensidad_trafico.geojson` | Traffic intensity (IMV) per street segment — used to **estimate noise** |
+| `arbolado.geojson` | Tree inventory (sampled to 5,000 points for performance) |
+| `zonas_verdes.geojson` | Parks and gardens, with surface area and fitness equipment |
+| `carril_bici.geojson` | Cycling routes |
+| `equipamientos_municipales.geojson` | Municipal facilities (sports facilities, markets, health centres are filtered from this) |
+| `intensidad_trafico.geojson` | Traffic intensity by segment |
+| `paradas_emt.geojson` | EMT bus stops with their lines |
+| `estaciones_fgv.geojson` | Metro/tram stations (FGV) |
+| `valenbisi.geojson` | Bike-share stations with live availability |
+| `grafo_valencia.graphml` (in `data/processed/`) | Valencia's pedestrian street network (OpenStreetMap via OSMnx) |
+| `barrios_clusters.geojson` | Pre-computed K-means clustering grid (generated offline, see notebooks) |
 
-Si algún dataset cambia de nombre o de URL en el portal (Opendatasoft
-actualiza sus catálogos de vez en cuando), `src/data_loader.py` tiene al
-principio un diccionario `DATASET_IDS` con todos los identificadores — solo
-hay que corregir ahí, no en el resto del código. Instrucciones de cómo
-verificarlo están en el propio archivo.
+If a dataset's URL changes on the geoportal, `src/data_loader.py` keeps all
+endpoints in one `ARCGIS_LAYERS` dictionary at the top of the file.
 
-## 4. Cómo correr la app
+**Note on the street graph's size**: if you upload this repo via GitHub's web
+interface (25MB per-file limit), compress the `.graphml` to `.graphml.gz`
+first — `src/accessibility.py` automatically loads either version.
+
+## Running the app
 
 ```bash
 streamlit run app.py
 ```
 
-Se abre en `http://localhost:8501`.
+Opens at `http://localhost:8501`.
 
-## 5. Desplegar online (gratis)
+## Deploying online (free)
 
-1. Sube el repo a GitHub (incluye `requirements.txt`, NO subas `data/raw`
-   ni `data/processed` si pesan mucho — añádelos a `.gitignore`, la app los
-   regenera sola).
-2. Ve a [share.streamlit.io](https://share.streamlit.io), conecta tu cuenta
-   de GitHub, elige el repo y `app.py` como entry point.
-3. Despliega. Te da una URL pública tipo
-   `https://mi-barrio-activo.streamlit.app` — esa es tu "link a la app
-   online" para la entrega.
+1. Push this repo to GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io), connect your
+   GitHub account, select the repo and `app.py` as the entry point.
+3. Deploy. You'll get a public URL — that's the "online app" link.
 
-## 6. Estructura del proyecto
+## Project structure
 
 ```
 mi-barrio-activo/
-├── app.py                       # Página principal / navegación
-├── pages/
-│   ├── 1_comparador.py          # Comparar hasta 3 direcciones candidatas
-│   ├── 2_mi_rutina.py           # Rutina diaria o GPX → exposición acumulada
-│   └── 3_simulador_incidencia.py # Simular mejora + generar informe PDF
+├── app.py                          # Single-page app: hero + full comparator
 ├── src/
-│   ├── data_loader.py            # Descarga y cachea datos de Open Data VLC
-│   ├── interpolation.py          # IDW para contaminación/ruido en cualquier punto
-│   ├── accessibility.py          # Distancias a pie via grafo OSMnx
-│   ├── index.py                  # Cálculo del Índice de Bienestar Urbano Personal
-│   ├── simulator.py              # Recalculo antes/después al simular mejora
-│   ├── geocoding.py               # Dirección de texto -> coordenadas (Nominatim)
-│   └── report.py                  # Generación del informe PDF de incidencia
+│   ├── data_loader.py              # Downloads and caches data from Valencia's geoportal
+│   ├── data_helpers.py             # Shared loading functions (Streamlit-cached)
+│   ├── interpolation.py            # IDW for pollution + nearest-station context
+│   ├── noise_inference.py          # Noise estimation from traffic intensity
+│   ├── accessibility.py            # Walking distances via OSMnx graph + Top-N rankings
+│   ├── clustering.py               # K-means neighbourhood clustering + validation
+│   ├── index.py                    # Personal Urban Wellbeing Index + user profiles
+│   ├── geocoding.py                # Address text -> coordinates (ArcGIS, Nominatim fallback)
+│   └── report_export.py            # PDF export of the comparison
 ├── data/
-│   ├── raw/                      # Datos descargados (se genera solo)
-│   └── processed/                 # Grafo cacheado, grids interpolados (se genera solo)
-├── outputs/                       # PDFs generados por el simulador
+│   ├── raw/                        # Downloaded datasets
+│   └── processed/                  # Cached street graph
+├── .streamlit/
+│   └── config.toml                 # Custom colour theme
 ├── requirements.txt
 └── README.md
 ```
 
-## 7. Metodología de Data Science (resumen para la memoria/vídeo)
+## Honesty notes (what this app does NOT claim)
 
-1. **Interpolación espacial (IDW)** de contaminación (NO2, PM10) y ruido (SPL)
-   entre las ~10 estaciones fijas de Valencia, para estimar la exposición en
-   cualquier punto de la ciudad, no solo donde hay sensor.
-2. **Modelo de accesibilidad** basado en grafos: usando la red de calles real
-   (OSMnx/NetworkX) se calcula el tiempo a pie hasta el carril bici, parque o
-   instalación deportiva más cercana — no distancia en línea recta, sino
-   distancia real caminando por las calles.
-3. **Índice compuesto personalizable**: el usuario pondera cuánto le importa
-   cada factor (contaminación, ruido, verde, deporte) y el índice se
-   recalcula con sus pesos.
-4. **Exposición acumulada en rutina/ruta**: en vez de evaluar solo un punto,
-   se suma la exposición a lo largo de todos los tramos de la rutina diaria
-   o ruta GPX del usuario.
-5. **Simulación antes/después**: al proponer una mejora de infraestructura en
-   un punto, se recalcula el índice solo en el radio de influencia relevante
-   y se cuantifica la diferencia — esto alimenta el informe de incidencia.
+- **Noise values are estimates**, not certified measurements — inferred from
+  traffic intensity, since Valencia's official noise sensors don't expose
+  usable values.
+- **There is no open dataset of Valencia housing prices for sale.** The
+  price field is entirely optional and user-entered; the app never invents
+  or scrapes market prices.
+- **The clustering grid is static**, regenerated offline (see the companion
+  Colab notebooks used during development), not recomputed on every request
+  — recalculating K-means with real-street accessibility for ~400 points on
+  every click would be far too slow for an interactive app.
